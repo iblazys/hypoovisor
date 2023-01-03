@@ -36,12 +36,22 @@ namespace vmx {
 
             //
             // Enabling VMX Operation
-            //
+            // move this to C++
             AsmEnableVmxOperation();
 
             DbgPrint("[*] VMX Operation Enabled Successfully !");
 
-            mem::AllocateVmxonRegion(&g_GuestState[i]);
+            //
+            // Allocating this region fails if the hypervisor is already injected
+            // how do we set the bios lock bit properly so that IsVMXSupported()
+            // will return false?
+
+            if (!mem::AllocateVmxonRegion(&g_GuestState[i])) 
+            {
+                DbgPrint("[-] Failed to allocate VMX on region!");
+                return FALSE;
+            }
+
             mem::AllocateVmcsRegion(&g_GuestState[i]);
 
             DbgPrint("[*] VMCS Region is allocated at  ===============> %llx", g_GuestState[i].VmcsRegion);
@@ -98,8 +108,8 @@ namespace vmx {
             DbgPrint("\t\tCurrent thread is executing in %d th logical processor.", i);
 
             __vmx_off();
-            MmFreeContiguousMemory(PhysicalToVirtualAddress(g_GuestState[i].VmxonRegion));
-            MmFreeContiguousMemory(PhysicalToVirtualAddress(g_GuestState[i].VmcsRegion));
+            MmFreeContiguousMemory(mem::PhysicalToVirtualAddress(g_GuestState[i].VmxonRegion));
+            MmFreeContiguousMemory(mem::PhysicalToVirtualAddress(g_GuestState[i].VmcsRegion));
         }
 
         DbgPrint("[*] VMX Operation turned off successfully. \n");

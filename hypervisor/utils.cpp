@@ -2,6 +2,7 @@
 #include <intrin.h>
 #include "msr.h"
 
+// Move me to better location
 int MathPower(int Base, int Exponent)
 {
     int Result = 1;
@@ -20,17 +21,4 @@ int MathPower(int Base, int Exponent)
         Base *= Base;
     }
     return Result;
-}
-
-UINT64 VirtualToPhysicalAddress(void* Va)
-{
-    return MmGetPhysicalAddress(Va).QuadPart;
-}
-
-PVOID PhysicalToVirtualAddress(UINT64 Pa)
-{
-    PHYSICAL_ADDRESS PhysicalAddr;
-    PhysicalAddr.QuadPart = Pa;
-
-    return MmGetVirtualForPhysical(PhysicalAddr);
 }

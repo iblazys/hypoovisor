@@ -118,6 +118,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Driver.cpp" />
+    <ClCompile Include="ept.cpp" />
     <ClCompile Include="hypervisor.cpp" />
     <ClCompile Include="mem.cpp" />
     <ClCompile Include="utils.cpp" />
@@ -131,6 +132,7 @@
     </MASM>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="ept.h" />
     <ClInclude Include="hypervisor.h" />
     <ClInclude Include="mem.h" />
     <ClInclude Include="msr.h" />

@@ -2,10 +2,10 @@
 #ifndef HYPERVISOR_H
 #define HYPERVISOR_H
 
-namespace hypoovisor {
-
-	bool Init();
+namespace hypoovisor 
+{
 	bool Start();
+	bool Stop();
 }
 
 

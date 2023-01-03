@@ -1,28 +1,31 @@
 #include "hypervisor.h"
-#include <ntddk.h>
 #include "utils.h"
+#include "vmx.h"
+#include "ept.h"
 
-bool Init() 
+namespace hypoovisor 
 {
-    // Check VMX support etc
+	bool Start()
+	{
+		DbgPrint("[+] Checking for VMX support...");
 
-    return false;
-}
+		if (!vmx::InitializeVmx())
+		{
+			DbgPrint("[-] Failed to initialize VMX.");
+			return false;
+		}
 
-bool Start() 
-{
-    KAFFINITY AffinityMask;
-    for (size_t i = 0; i < KeQueryActiveProcessors(); i++)
-    {
-        AffinityMask = MathPower(2, i);
-        KeSetSystemAffinityThread(AffinityMask);
+		DbgPrint("[+] VMX Initiated Successfully.");
 
-        DbgPrint("=====================================================");
-        DbgPrint("Current thread is executing in %d th logical processor.", i);
+		ept::InitializeEptp(); // remove me, testing purposes
+		return true;
+	}
 
-        // run code here for each processor
+	bool Stop()
+	{
+		DbgPrint("[-] Turning off VMX so we can load the driver again.");
+		vmx::TerminateVmx();
 
-    }
-
-    return false;
+		return true;
+	}
 }

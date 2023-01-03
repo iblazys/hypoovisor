@@ -36,6 +36,7 @@ typedef union _IA32_VMX_BASIC_MSR
     } Fields;
 } IA32_VMX_BASIC_MSR, * PIA32_VMX_BASIC_MSR;
 
+// this shouldnt be here 
 typedef struct _CPUID
 {
     int eax;
@@ -45,6 +46,6 @@ typedef struct _CPUID
 } CPUID, * PCPUID;
 
 
-#define MSR_IA32_FEATURE_CONTROL 0x03A
+#define MSR_IA32_FEATURE_CONTROL    0x03A
 
-#define MSR_IA32_VMX_BASIC               0x480
+#define MSR_IA32_VMX_BASIC          0x480

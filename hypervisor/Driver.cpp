@@ -2,6 +2,7 @@
 #include <wdf.h>
 #include "utils.h"
 #include "vmx.h"
+#include "hypervisor.h"
 
 extern "C" void AsmEnableVmxOperation(void);
 
@@ -19,12 +20,14 @@ NTSTATUS MyDriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING Re
 
 	DbgPrint("[+] Hypoovisor initializing...");
 
-	DbgPrint("[+] Checking for VMX support...");
-
-	if (vmx::InitializeVmx()) 
+	if (!hypoovisor::Start()) 
 	{
-		DbgPrint("[*] VMX Initiated Successfully.");
+		DbgPrint("[-] Hypoovisor failed to start...");
+		return STATUS_UNSUCCESSFUL;
 	}
 
-	return 0;
+	// REMOVE ME ONCE UM COMMUNCATION IS COMPLETE
+	hypoovisor::Stop();
+
+	return STATUS_SUCCESS;
 }
