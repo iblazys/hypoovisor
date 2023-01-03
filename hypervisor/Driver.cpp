@@ -17,21 +17,14 @@ NTSTATUS MyDriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING Re
 	UNREFERENCED_PARAMETER(DriverObject);
 	UNREFERENCED_PARAMETER(RegistryPath);
 
-	DbgPrint("[+] Hypoovisor started");
+	DbgPrint("[+] Hypoovisor initializing...");
 
-	DbgPrint("[+] Checking for VMX support");
+	DbgPrint("[+] Checking for VMX support...");
 
-	if (!vmx::IsVMXSupported()) 
+	if (vmx::InitializeVmx()) 
 	{
-		DbgPrint("[+] This device does not support VMX!");
-		return 1;
+		DbgPrint("[*] VMX Initiated Successfully.");
 	}
-
-	DbgPrint("[+] Enabling VMX Operation...");
-
-	AsmEnableVmxOperation(); // TODO: Move to C++
-
-	DbgPrint("[+] VMX Operation Enabled");
 
 	return 0;
 }

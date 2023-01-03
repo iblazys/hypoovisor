@@ -17,6 +17,25 @@ typedef union _IA32_FEATURE_CONTROL_MSR
     } Fields;
 } IA32_FEATURE_CONTROL_MSR, * PIA32_FEATURE_CONTROL_MSR;
 
+typedef union _IA32_VMX_BASIC_MSR
+{
+    ULONG64 All;
+    struct
+    {
+        ULONG32 RevisionIdentifier : 31;   // [0-30]
+        ULONG32 Reserved1 : 1;             // [31]
+        ULONG32 RegionSize : 12;           // [32-43]
+        ULONG32 RegionClear : 1;           // [44]
+        ULONG32 Reserved2 : 3;             // [45-47]
+        ULONG32 SupportedIA64 : 1;         // [48]
+        ULONG32 SupportedDualMoniter : 1;  // [49]
+        ULONG32 MemoryType : 4;            // [50-53]
+        ULONG32 VmExitReport : 1;          // [54]
+        ULONG32 VmxCapabilityHint : 1;     // [55]
+        ULONG32 Reserved3 : 8;             // [56-63]
+    } Fields;
+} IA32_VMX_BASIC_MSR, * PIA32_VMX_BASIC_MSR;
+
 typedef struct _CPUID
 {
     int eax;
@@ -27,3 +46,5 @@ typedef struct _CPUID
 
 
 #define MSR_IA32_FEATURE_CONTROL 0x03A
+
+#define MSR_IA32_VMX_BASIC               0x480

@@ -119,8 +119,8 @@
   <ItemGroup>
     <ClCompile Include="Driver.cpp" />
     <ClCompile Include="hypervisor.cpp" />
+    <ClCompile Include="mem.cpp" />
     <ClCompile Include="utils.cpp" />
-    <ClCompile Include="vmm.cpp" />
     <ClCompile Include="vmx.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -132,9 +132,9 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="hypervisor.h" />
+    <ClInclude Include="mem.h" />
     <ClInclude Include="msr.h" />
     <ClInclude Include="utils.h" />
-    <ClInclude Include="vmm.h" />
     <ClInclude Include="vmx.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

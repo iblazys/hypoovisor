@@ -1,4 +1,5 @@
-#pragma once
+#ifndef VMX_H
+#define VMX_H
 #include <ntddk.h>
 
 namespace vmx 
@@ -20,5 +21,8 @@ namespace vmx
     #define POOLTAG 0x48564653 // [H]yper[V]isor [F]rom [S]cratch (HVFS) -- CHANGE ME
 
     BOOLEAN IsVMXSupported();
+    BOOLEAN InitializeVmx();
+    VOID TerminateVmx();
 }
+#endif
 
