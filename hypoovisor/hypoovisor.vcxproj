@@ -117,22 +117,27 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="driver.c" />
+    <ClCompile Include="ept.c" />
     <ClCompile Include="hypoovisor.c" />
     <ClCompile Include="memory.c" />
     <ClCompile Include="processor.c" />
     <ClCompile Include="utils.c" />
+    <ClCompile Include="vmcs.c" />
   </ItemGroup>
   <ItemGroup>
     <MASM Include="AsmMain.asm">
       <FileType>Document</FileType>
     </MASM>
+    <MASM Include="vmx_exit_handler.asm" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="ept.h" />
     <ClInclude Include="hypoovisor.h" />
     <ClInclude Include="memory.h" />
     <ClInclude Include="msr.h" />
     <ClInclude Include="processor.h" />
     <ClInclude Include="utils.h" />
+    <ClInclude Include="vmcs.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

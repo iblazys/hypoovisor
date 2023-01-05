@@ -2,16 +2,21 @@
 #include "processor.h"
 #include "utils.h"
 #include "memory.h"
-
-#include <ia32.h>
-#include <windef.h>
+#include "ept.h"
+#include "vmcs.h"
+#include <windef.h> // for BYTE*
 
 VIRTUAL_MACHINE_STATE *g_GuestState;
+UINT64 g_VirtualGuestMemoryAddress;
 int g_ProcessorCounts;
 
 BOOLEAN InitializeHV() 
 {
+    
 	DbgPrint("[hypoo] Hypoovisor initializing...");
+
+    // TODO: Check EPT Support, g_VirtualGuestMemoryAddress gets its address from here.
+    EPT_POINTER* EPTp = InitializeEPTP();
 
     if (!IsVMXSupported()) 
     {
@@ -47,7 +52,25 @@ BOOLEAN InitializeHV()
         DbgPrint("\n=====================================================\n");
     }
 
+    g_GuestState->Eptp = EPTp;
+
 	return TRUE;
+}
+
+BOOLEAN RunHV() 
+{
+    for (size_t i = 0; i < (100 * PAGE_SIZE) - 1; i++)
+    {
+        void* TempAsm = "\xF4";
+        memcpy(g_VirtualGuestMemoryAddress + i, TempAsm, 1);
+    }
+
+    //
+    // Launching VM for Test (in the 0th virtual processor)
+    //
+    int ProcessorID = 0;
+
+    LaunchVm(ProcessorID, g_GuestState->Eptp);
 }
 
 BOOLEAN StopHV() 
@@ -176,6 +199,70 @@ BOOLEAN AllocateVmcsRegion(IN VIRTUAL_MACHINE_STATE* GuestState)
     return TRUE;
 }
 
+VOID LaunchVm(int ProcessorID, EPT_POINTER* EPTP)
+{
+    DbgPrint("\n======================== Launching VM =============================\n");
+
+    KAFFINITY AffinityMask;
+    AffinityMask = MathPower(2, ProcessorID);
+    KeSetSystemAffinityThread(AffinityMask);
+
+    DbgPrint("[*]\t\tCurrent thread is executing in logical processor: %d \n", ProcessorID);
+
+    PAGED_CODE();
+
+    // Allocate stack for the VM Exit Handler
+    UINT64 VMM_STACK_VA = ExAllocatePoolWithTag(NonPagedPool, VMM_STACK_SIZE, POOLTAG);
+    g_GuestState[ProcessorID].VmmStack = VMM_STACK_VA;
+
+    if (g_GuestState[ProcessorID].VmmStack == NULL)
+    {
+        DbgPrint("[*] Error in allocating VMM Stack.\n");
+        return;
+    }
+    RtlZeroMemory(g_GuestState[ProcessorID].VmmStack, VMM_STACK_SIZE);
+
+    // Allocate memory for MSRBitMap
+    g_GuestState[ProcessorID].MsrBitmap = MmAllocateNonCachedMemory(PAGE_SIZE); // should be aligned, famous last words
+    if (g_GuestState[ProcessorID].MsrBitmap == NULL)
+    {
+        DbgPrint("[*] Error in allocating MSRBitMap.\n");
+        return;
+    }
+    RtlZeroMemory(g_GuestState[ProcessorID].MsrBitmap, PAGE_SIZE);
+    g_GuestState[ProcessorID].MsrBitmapPhysical = VirtualToPhysicalAddress(g_GuestState[ProcessorID].MsrBitmap);
+
+    // Clear the VMCS State
+    if (!ClearVmcsState(&g_GuestState[ProcessorID]))
+    {
+        //goto ErrorReturn;
+    }
+
+    // Load VMCS (Set the Current VMCS)
+    if (!LoadVmcs(&g_GuestState[ProcessorID]))
+    {
+        //goto ErrorReturn;
+    }
+
+    DbgPrint("[hypoo] Setting up VMCS\n");
+
+    SetupVmcs(&g_GuestState[ProcessorID], EPTP);
+
+   
+     
+    __vmx_vmlaunch(); // KMODE UNEXPECTED TRAP
+
+    // if VMLAUNCH succeeds will never be here!
+    /**
+    ULONG64 ErrorCode = 0;
+    __vmx_vmread(VMCS_VM_INSTRUCTION_ERROR, &ErrorCode);
+    __vmx_off();
+    DbgPrint("[*] VMLAUNCH Error : 0x%llx\n", ErrorCode);
+    DbgBreakPoint();
+
+    */
+}
+
 VOID TerminateVmx()
 {
     DbgPrint("\n[hypoo] Terminating VMX...\n");
@@ -194,4 +281,127 @@ VOID TerminateVmx()
     }
 
     DbgPrint("[hypoo] VMX Operation turned off successfully. \n");
+}
+
+VOID MainVmexitHandler(PGUEST_REGS GuestRegs)
+{
+    ULONG ExitReason = 0;
+    __vmx_vmread(VMCS_EXIT_REASON, &ExitReason);
+
+    ULONG ExitQualification = 0;
+    __vmx_vmread(VMCS_EXIT_QUALIFICATION, &ExitQualification);
+
+    DbgPrint("\nVM_EXIT_REASION 0x%x\n", ExitReason & 0xffff);
+    DbgPrint("\EXIT_QUALIFICATION 0x%x\n", ExitQualification);
+
+    switch (ExitReason)
+    {
+        //
+        // 25.1.2  Instructions That Cause VM Exits Unconditionally
+        // The following instructions cause VM exits when they are executed in VMX non-root operation: CPUID, GETSEC,
+        // INVD, and XSETBV. This is also true of instructions introduced with VMX, which include: INVEPT, INVVPID,
+        // VMCALL, VMCLEAR, VMLAUNCH, VMPTRLD, VMPTRST, VMRESUME, VMXOFF, and VMXON.
+        //
+
+    case VMX_EXIT_REASON_EXECUTE_VMCLEAR:
+    case VMX_EXIT_REASON_EXECUTE_VMPTRLD:
+    case VMX_EXIT_REASON_EXECUTE_VMPTRST:
+    case VMX_EXIT_REASON_EXECUTE_VMREAD:
+    case VMX_EXIT_REASON_EXECUTE_VMRESUME:
+    case VMX_EXIT_REASON_EXECUTE_VMWRITE:
+    case VMX_EXIT_REASON_EXECUTE_VMXOFF:
+    case VMX_EXIT_REASON_EXECUTE_VMXON:
+    case VMX_EXIT_REASON_EXECUTE_VMLAUNCH:
+    {
+        break;
+    }
+    case VMX_EXIT_REASON_EXECUTE_HLT:
+    {
+        DbgPrint("[*] Execution of HLT detected... \n");
+
+        //
+        // that's enough for now ;)
+        //
+        AsmVmxoffAndRestoreState();
+
+        break;
+    }
+    case VMX_EXIT_REASON_EXCEPTION_OR_NMI:
+    {
+        break;
+    }
+
+    case VMX_EXIT_REASON_EXECUTE_CPUID:
+    {
+        break;
+    }
+
+    case VMX_EXIT_REASON_EXECUTE_INVD:
+    {
+        break;
+    }
+
+    case VMX_EXIT_REASON_EXECUTE_VMCALL:
+    {
+        break;
+    }
+
+    case VMX_EXIT_REASON_MOV_CR:
+    {
+        break;
+    }
+
+    case VMX_EXIT_REASON_EXECUTE_RDMSR:
+    {
+        break;
+    }
+
+    case VMX_EXIT_REASON_EXECUTE_WRMSR:
+    {
+        break;
+    }
+
+    case VMX_EXIT_REASON_EPT_VIOLATION:
+    {
+        break;
+    }
+
+    default:
+    {
+        // DbgBreakPoint();
+        break;
+    }
+    }
+}
+
+VOID ResumeToNextInstruction()
+{
+    PVOID ResumeRIP = NULL;
+    PVOID CurrentRIP = NULL;
+    ULONG ExitInstructionLength = 0;
+
+    __vmx_vmread(VMCS_GUEST_RIP, &CurrentRIP);
+    __vmx_vmread(VMCS_VMEXIT_INSTRUCTION_LENGTH, &ExitInstructionLength);
+
+    ResumeRIP = (PCHAR)CurrentRIP + ExitInstructionLength;
+
+    __vmx_vmwrite(VMCS_GUEST_RIP, (ULONG64)ResumeRIP);
+}
+
+VOID VmResumeInstruction()
+{
+    __vmx_vmresume();
+
+    // if VMRESUME succeeds will never be here !
+
+    ULONG64 ErrorCode = 0;
+    __vmx_vmread(VMCS_VM_INSTRUCTION_ERROR, &ErrorCode);
+    __vmx_off();
+    DbgPrint("[*] VMRESUME Error : 0x%llx\n", ErrorCode);
+
+    //
+    // It's such a bad error because we don't where to go!
+    // prefer to break
+    //
+    DbgBreakPoint();
 }

@@ -19,15 +19,14 @@ BOOLEAN IsVMXSupported()
     IA32_FEATURE_CONTROL_REGISTER Control = { 0 };
     Control.AsUInt = GetHostMSR(IA32_FEATURE_CONTROL);
 
-    //
     // BIOS lock checking
-    //
     if (Control.LockBit == 0) // Check if lock exists
     {
         Control.LockBit = TRUE;
-        Control.EnableVmxInsideSmx = TRUE;
+        Control.EnableVmxInsideSmx = TRUE; // should we eventually be setting EnableVmxOutsideSmx to false ?
 
-        __writemsr(IA32_FEATURE_CONTROL, Control.AsUInt); // Set our lock
+        // Write the MSR with lock bit set to 1 and EnableVmxInsideSmx to 1
+        __writemsr(IA32_FEATURE_CONTROL, Control.AsUInt);
     }
     else if (Control.EnableVmxOutsideSmx == FALSE)
     {

@@ -23,8 +23,10 @@ NTSTATUS DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING Regi
 		DbgPrint("[hypoo] hypervisor initialization failed.");
 	}
 
+	RunHV(); // KMODE_EXPECTED_TRAP
+
 	// remove me
-	StopHV(); // remove, for testing purposes via manual mapping
+	//StopHV(); // remove, for testing purposes via manual mapping
 
 	return STATUS_SUCCESS;
 

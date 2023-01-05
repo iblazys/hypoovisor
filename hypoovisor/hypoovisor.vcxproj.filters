@@ -39,11 +39,12 @@
     <ClCompile Include="processor.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="AsmMain.asm">
+    <ClCompile Include="ept.c">
       <Filter>Source Files</Filter>
-    </None>
+    </ClCompile>
+    <ClCompile Include="vmcs.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="hypoovisor.h">
@@ -61,5 +62,19 @@
     <ClInclude Include="msr.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="ept.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="vmcs.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <MASM Include="AsmMain.asm">
+      <Filter>Source Files</Filter>
+    </MASM>
+    <MASM Include="vmx_exit_handler.asm">
+      <Filter>Source Files</Filter>
+    </MASM>
   </ItemGroup>
 </Project>
