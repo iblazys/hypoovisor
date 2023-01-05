@@ -1,8 +1,10 @@
 PUBLIC AsmEnableVmxOperation
-.code _text
 
-;Move this to C++ if we can
+.CODE _text
+
+; Set the
 AsmEnableVmxOperation PROC PUBLIC
+
 	PUSH RAX			    ; Save the state
 	
 	XOR RAX, RAX			; Clear the RAX
@@ -13,11 +15,7 @@ AsmEnableVmxOperation PROC PUBLIC
 	
 	POP RAX			     	; Restore the state
 	RET
-AsmEnableVmxOperation ENDP
 
-MainAsm2 PROC PUBLIC
-int 3
-ret
-MainAsm2 ENDP 
+AsmEnableVmxOperation ENDP
 
 END

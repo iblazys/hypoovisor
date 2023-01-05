@@ -1,8 +1,5 @@
 #include "utils.h"
-#include <intrin.h>
-#include "msr.h"
 
-// Move me to better location
 int MathPower(int Base, int Exponent)
 {
     int Result = 1;
@@ -21,4 +18,10 @@ int MathPower(int Base, int Exponent)
         Base *= Base;
     }
     return Result;
+}
+
+
+BOOLEAN IsBitSet(SIZE_T BitField, SIZE_T BitPosition)
+{
+    return (BitField >> BitPosition) & 1UL;
 }

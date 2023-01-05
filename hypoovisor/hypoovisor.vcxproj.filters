@@ -19,52 +19,46 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <Inf Include="hypervisor.inf">
+    <Inf Include="hypoovisor.inf">
       <Filter>Driver Files</Filter>
     </Inf>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="Driver.cpp">
+    <ClCompile Include="driver.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="hypervisor.cpp">
+    <ClCompile Include="hypoovisor.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="utils.cpp">
+    <ClCompile Include="utils.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="vmx.cpp">
+    <ClCompile Include="memory.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="mem.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="ept.cpp">
+    <ClCompile Include="processor.c">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <MASM Include="source.asm">
+    <None Include="AsmMain.asm">
       <Filter>Source Files</Filter>
-    </MASM>
+    </None>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="hypoovisor.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="utils.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="hypervisor.h">
+    <ClInclude Include="memory.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="processor.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="msr.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="vmx.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="mem.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="ept.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

@@ -1,5 +1,5 @@
 ;
-; hypervisor.inf
+; hypoovisor.inf
 ;
 
 [Version]
@@ -7,19 +7,19 @@ Signature="$WINDOWS NT$"
 Class=System ; TODO: specify appropriate Class
 ClassGuid={4d36e97d-e325-11ce-bfc1-08002be10318} ; TODO: specify appropriate ClassGuid
 Provider=%ManufacturerName%
-CatalogFile=hypervisor.cat
+CatalogFile=hypoovisor.cat
 DriverVer= ; TODO: set DriverVer in stampinf property pages
 PnpLockdown=1
 
 [DestinationDirs]
 DefaultDestDir = 12
-hypervisor_Device_CoInstaller_CopyFiles = 11
+hypoovisor_Device_CoInstaller_CopyFiles = 11
 
 [SourceDisksNames]
 1 = %DiskName%,,,""
 
 [SourceDisksFiles]
-hypervisor.sys  = 1,,
+hypoovisor.sys  = 1,,
 WdfCoInstaller$KMDFCOINSTALLERVERSION$.dll=1 ; make sure the number matches with SourceDisksNames
 
 ;*****************************************
@@ -30,48 +30,48 @@ WdfCoInstaller$KMDFCOINSTALLERVERSION$.dll=1 ; make sure the number matches with
 %ManufacturerName%=Standard,NT$ARCH$
 
 [Standard.NT$ARCH$]
-%hypervisor.DeviceDesc%=hypervisor_Device, Root\hypervisor ; TODO: edit hw-id
+%hypoovisor.DeviceDesc%=hypoovisor_Device, Root\hypoovisor ; TODO: edit hw-id
 
-[hypervisor_Device.NT]
+[hypoovisor_Device.NT]
 CopyFiles=Drivers_Dir
 
 [Drivers_Dir]
-hypervisor.sys
+hypoovisor.sys
 
 ;-------------- Service installation
-[hypervisor_Device.NT.Services]
-AddService = hypervisor,%SPSVCINST_ASSOCSERVICE%, hypervisor_Service_Inst
+[hypoovisor_Device.NT.Services]
+AddService = hypoovisor,%SPSVCINST_ASSOCSERVICE%, hypoovisor_Service_Inst
 
-; -------------- hypervisor driver install sections
-[hypervisor_Service_Inst]
-DisplayName    = %hypervisor.SVCDESC%
+; -------------- hypoovisor driver install sections
+[hypoovisor_Service_Inst]
+DisplayName    = %hypoovisor.SVCDESC%
 ServiceType    = 1               ; SERVICE_KERNEL_DRIVER
 StartType      = 3               ; SERVICE_DEMAND_START
 ErrorControl   = 1               ; SERVICE_ERROR_NORMAL
-ServiceBinary  = %12%\hypervisor.sys
+ServiceBinary  = %12%\hypoovisor.sys
 
 ;
-;--- hypervisor_Device Coinstaller installation ------
+;--- hypoovisor_Device Coinstaller installation ------
 ;
 
-[hypervisor_Device.NT.CoInstallers]
-AddReg=hypervisor_Device_CoInstaller_AddReg
-CopyFiles=hypervisor_Device_CoInstaller_CopyFiles
+[hypoovisor_Device.NT.CoInstallers]
+AddReg=hypoovisor_Device_CoInstaller_AddReg
+CopyFiles=hypoovisor_Device_CoInstaller_CopyFiles
 
-[hypervisor_Device_CoInstaller_AddReg]
+[hypoovisor_Device_CoInstaller_AddReg]
 HKR,,CoInstallers32,0x00010000, "WdfCoInstaller$KMDFCOINSTALLERVERSION$.dll,WdfCoInstaller"
 
-[hypervisor_Device_CoInstaller_CopyFiles]
+[hypoovisor_Device_CoInstaller_CopyFiles]
 WdfCoInstaller$KMDFCOINSTALLERVERSION$.dll
 
-[hypervisor_Device.NT.Wdf]
-KmdfService =  hypervisor, hypervisor_wdfsect
-[hypervisor_wdfsect]
+[hypoovisor_Device.NT.Wdf]
+KmdfService =  hypoovisor, hypoovisor_wdfsect
+[hypoovisor_wdfsect]
 KmdfLibraryVersion = $KMDFVERSION$
 
 [Strings]
 SPSVCINST_ASSOCSERVICE= 0x00000002
 ManufacturerName="<Your manufacturer name>" ;TODO: Replace with your manufacturer name
-DiskName = "hypervisor Installation Disk"
-hypervisor.DeviceDesc = "hypervisor Device"
-hypervisor.SVCDESC = "hypervisor Service"
+DiskName = "hypoovisor Installation Disk"
+hypoovisor.DeviceDesc = "hypoovisor Device"
+hypoovisor.SVCDESC = "hypoovisor Service"
