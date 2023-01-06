@@ -42,8 +42,6 @@ SIZE_T GetHostMSR(ULONG MsrAddress)
     return __readmsr(MsrAddress);
 }
 
-
-
 /// <summary>
 /// 
 /// </summary>

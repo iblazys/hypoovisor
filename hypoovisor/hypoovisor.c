@@ -124,7 +124,7 @@ BOOLEAN AllocateVmxonRegion(IN VIRTUAL_MACHINE_STATE* GuestState)
     DbgPrint("[*] MSR_IA32_VMX_BASIC (MSR 0x480) Revision Identifier %llx", basic.VmcsRevisionId);
 
     // Changing Revision Identifier
-    *(UINT64*)AlignedVirtualBuffer = basic.VmcsRevisionId;
+    *(UINT64*)AlignedVirtualBuffer = basic.VmcsRevisionId; // REVISION ID IS 1, DEFAULT IS 4 IN VmcsAuditor.exe
 
     int Status = __vmx_on(&AlignedPhysicalBuffer);
 
@@ -207,7 +207,7 @@ VOID LaunchVm(int ProcessorID, EPT_POINTER* EPTP)
     AffinityMask = MathPower(2, ProcessorID);
     KeSetSystemAffinityThread(AffinityMask);
 
-    DbgPrint("[*]\t\tCurrent thread is executing in logical processor: %d \n", ProcessorID);
+    DbgPrint("[hypoo]\t\tCurrent thread is executing in logical processor: %d \n", ProcessorID);
 
     PAGED_CODE();
 
@@ -235,32 +235,37 @@ VOID LaunchVm(int ProcessorID, EPT_POINTER* EPTP)
     // Clear the VMCS State
     if (!ClearVmcsState(&g_GuestState[ProcessorID]))
     {
-        //goto ErrorReturn;
+        DbgPrint("Failed to clear VMCS State");
+        goto ErrorReturn;
     }
 
     // Load VMCS (Set the Current VMCS)
     if (!LoadVmcs(&g_GuestState[ProcessorID]))
     {
-        //goto ErrorReturn;
+        DbgPrint("Failed to call __vmx_vmptrld()");
+        goto ErrorReturn;
     }
 
-    DbgPrint("[hypoo] Setting up VMCS\n");
-
+    DbgPrint("[hypoo] Setting up VMCS...");
     SetupVmcs(&g_GuestState[ProcessorID], EPTP);
 
-   
-     
-    __vmx_vmlaunch(); // KMODE UNEXPECTED TRAP
+    __vmx_vmlaunch();
+
+    DbgPrint("===== UH WE SHOULDNT SEE THIS ======");
 
     // if VMLAUNCH succeeds will never be here!
-    /**
-    ULONG64 ErrorCode = 0;
-    __vmx_vmread(VMCS_VM_INSTRUCTION_ERROR, &ErrorCode);
-    __vmx_off();
-    DbgPrint("[*] VMLAUNCH Error : 0x%llx\n", ErrorCode);
-    DbgBreakPoint();
+    
+    //ULONG64 ErrorCode = 0;
+    //__vmx_vmread(VMCS_VM_INSTRUCTION_ERROR, &ErrorCode);
+    //__vmx_off();
+    //DbgPrint("[*] VMLAUNCH Error : 0x%llx\n", ErrorCode);
+    //DbgBreakPoint();
 
-    */
+    return TRUE;
+
+ErrorReturn:
+    DbgPrint("[*] Fail to setup VMCS !\n");
+    return FALSE;
 }
 
 VOID TerminateVmx()
@@ -403,5 +408,5 @@ VOID VmResumeInstruction()
     // It's such a bad error because we don't where to go!
     // prefer to break
     //
-    DbgBreakPoint();
+    //DbgBreakPoint();
 }

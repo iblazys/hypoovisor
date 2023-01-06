@@ -1,4 +1,5 @@
 #include "vmcs.h"
+#pragma warning(disable : 6328)
 
 /// <summary>
 /// Stores the current-VMCS pointer into a specified memory address.
@@ -12,7 +13,7 @@ UINT64 VmptrstInstruction()
 
     DbgPrint("[*] VMPTRST %llx\n", vmcspa);
 
-    return 0; // use this pointer for something?
+    return 0;
 }
 
 /// <summary>
@@ -48,87 +49,99 @@ BOOLEAN LoadVmcs(VIRTUAL_MACHINE_STATE* GuestState)
     }
     return TRUE;
 }
-
-BOOLEAN SetupVmcs(VIRTUAL_MACHINE_STATE* GuestState, EPT_POINTER* EPTP) 
+VOID SetupVmcsHostData(SEGMENT_DESCRIPTOR_REGISTER_64* Gdtr, SEGMENT_DESCRIPTOR_REGISTER_64* Idtr)
 {
-    SEGMENT_DESCRIPTOR_REGISTER_64  Gdtr = { 0 };
-    SEGMENT_DESCRIPTOR_REGISTER_64  Idtr = { 0 };
+    DbgPrint("[hypoo] Setting up VMCS host data");
 
-    DbgPrint("GetEs RETURNED: %02X", GetEs());
-    DbgPrint("GetCs RETURNED: %02X", GetCs());
-    DbgPrint("GetSs RETURNED: %02X", GetSs());
-    DbgPrint("GetDs RETURNED: %02X", GetDs());
-    DbgPrint("GetFs RETURNED: %02X", GetFs());
-    DbgPrint("GetGs RETURNED: %02X", GetGs());
-    DbgPrint("GetLdtr RETURNED: %02X", GetLdtr()); // LDTR returning 0
-    DbgPrint("GetTr RETURNED: %02X", GetTr());
+    __vmx_vmwrite(VMCS_HOST_ES_SELECTOR, GetEs() & ~0xF8);
+    __vmx_vmwrite(VMCS_HOST_CS_SELECTOR, GetCs() & ~0xF8);
+    __vmx_vmwrite(VMCS_HOST_SS_SELECTOR, GetSs() & ~0xF8);
+    __vmx_vmwrite(VMCS_HOST_DS_SELECTOR, GetDs() & ~0xF8);
+    __vmx_vmwrite(VMCS_HOST_FS_SELECTOR, GetFs() & ~0xF8);
+    __vmx_vmwrite(VMCS_HOST_GS_SELECTOR, GetGs() & ~0xF8);
+    __vmx_vmwrite(VMCS_HOST_TR_SELECTOR, GetTr() & ~0xF8);
 
-    __vmx_vmwrite(VMCS_HOST_ES_SELECTOR, GetEs() & 0xFFF8);
-    __vmx_vmwrite(VMCS_HOST_CS_SELECTOR, GetCs() & 0xFFF8);
-    __vmx_vmwrite(VMCS_HOST_SS_SELECTOR, GetSs() & 0xFFF8);
-    __vmx_vmwrite(VMCS_HOST_DS_SELECTOR, GetDs() & 0xFFF8);
-    __vmx_vmwrite(VMCS_HOST_FS_SELECTOR, GetFs() & 0xFFF8);
-    __vmx_vmwrite(VMCS_HOST_GS_SELECTOR, GetGs() & 0xFFF8);
-    __vmx_vmwrite(VMCS_HOST_TR_SELECTOR, GetTr() & 0xFFF8);
+    __vmx_vmwrite(VMCS_HOST_CR0, __readcr0());
+    __vmx_vmwrite(VMCS_HOST_CR3, __readcr3());
+    __vmx_vmwrite(VMCS_HOST_CR4, __readcr4());
 
-    // Setting the link pointer to the required value for 4KB VMCS
-    __vmx_vmwrite(VMCS_GUEST_VMCS_LINK_POINTER, ~0ULL);
+    __vmx_vmwrite(VMCS_HOST_SYSENTER_CS, __readmsr(IA32_SYSENTER_CS));
+    __vmx_vmwrite(VMCS_HOST_SYSENTER_EIP, __readmsr(IA32_SYSENTER_EIP));
+    __vmx_vmwrite(VMCS_HOST_SYSENTER_ESP, __readmsr(IA32_SYSENTER_ESP));
 
-    // Unused in this hypervisor for now
-    __vmx_vmwrite(VMCS_GUEST_DEBUGCTL, __readmsr(IA32_DEBUGCTL) & 0xFFFFFFFF);
-    __vmx_vmwrite(VMCS_GUEST_DEBUGCTL + 1, __readmsr(IA32_DEBUGCTL) >> 32); // VMCS_GUEST_DEBUGCTL_HIGH, 0x00002803, not in ia32.h
+    __vmx_vmwrite(VMCS_HOST_TR_BASE, GetSegmentBase(Gdtr->BaseAddress, GetTr()));
 
-    __vmx_vmwrite(VMCS_CTRL_TSC_OFFSET, 0);
-    __vmx_vmwrite(VMCS_CTRL_TSC_OFFSET + 1, 0); // VMCS_CTRL_TSC_OFFSET_HIGH, 0x00002010, not in ia32.h
+    __vmx_vmwrite(VMCS_HOST_FS_BASE, __readmsr(IA32_FS_BASE));
+    __vmx_vmwrite(VMCS_HOST_GS_BASE, __readmsr(IA32_GS_BASE));
 
-    __vmx_vmwrite(VMCS_CTRL_PAGEFAULT_ERROR_CODE_MASK, 0);
-    __vmx_vmwrite(VMCS_CTRL_PAGEFAULT_ERROR_CODE_MATCH, 0);
+    __vmx_vmwrite(VMCS_HOST_GDTR_BASE, Gdtr->BaseAddress);
+    __vmx_vmwrite(VMCS_HOST_IDTR_BASE, Idtr->BaseAddress);
 
-    __vmx_vmwrite(VMCS_CTRL_VMEXIT_MSR_STORE_COUNT, 0);
-    __vmx_vmwrite(VMCS_CTRL_VMEXIT_MSR_LOAD_COUNT, 0);
+    __vmx_vmwrite(VMCS_HOST_RSP, ((ULONG64)g_GuestState->VmmStack + VMM_STACK_SIZE - 1));
+    __vmx_vmwrite(VMCS_HOST_RIP, (ULONG64)AsmVmexitHandler);
 
-    __vmx_vmwrite(VMCS_CTRL_VMENTRY_MSR_LOAD_COUNT, 0);
-    __vmx_vmwrite(VMCS_CTRL_VMENTRY_INTERRUPTION_INFORMATION_FIELD, 0);
+    // DEBUG
+    /*
+    DbgPrint("host_state.gdtr_base: [0x%02X]", Gdtr->BaseAddress);
+    DbgPrint("host_state.gdtr_limit: [0x%02X]", Gdtr->Limit);
+    DbgPrint("host_state.idtr_base: [0x%02X]", Idtr->BaseAddress);
+    DbgPrint("host_state.idtr_limit: [0x%02X]", Idtr->Limit);
+    */
+}
 
-    //
-    // Segmentation
-    //
+VOID SetupVmcsGuestData(SEGMENT_DESCRIPTOR_REGISTER_64* Gdtr, SEGMENT_DESCRIPTOR_REGISTER_64* Idtr)
+{
+    DbgPrint("[hypoo] Setting up VMCS guest data");
+
+    // ------------ Segmentation -----------------
+    //SEGMENT_DESCRIPTOR_REGISTER_64  Gdtr = { 0 };
+    //SEGMENT_DESCRIPTOR_REGISTER_64  Idtr = { 0 };
 
     // Selectors
     __vmx_vmwrite(VMCS_GUEST_CS_SELECTOR, GetCs());
-    __vmx_vmwrite(VMCS_GUEST_SS_SELECTOR, GetSs());
     __vmx_vmwrite(VMCS_GUEST_DS_SELECTOR, GetDs());
     __vmx_vmwrite(VMCS_GUEST_ES_SELECTOR, GetEs());
     __vmx_vmwrite(VMCS_GUEST_FS_SELECTOR, GetFs());
     __vmx_vmwrite(VMCS_GUEST_GS_SELECTOR, GetGs());
+    __vmx_vmwrite(VMCS_GUEST_SS_SELECTOR, GetSs());
     __vmx_vmwrite(VMCS_GUEST_LDTR_SELECTOR, GetLdtr());
     __vmx_vmwrite(VMCS_GUEST_TR_SELECTOR, GetTr());
 
     // Limits
     __vmx_vmwrite(VMCS_GUEST_CS_LIMIT, __segmentlimit(GetCs()));
-    __vmx_vmwrite(VMCS_GUEST_SS_LIMIT, __segmentlimit(GetSs()));
     __vmx_vmwrite(VMCS_GUEST_DS_LIMIT, __segmentlimit(GetDs()));
     __vmx_vmwrite(VMCS_GUEST_ES_LIMIT, __segmentlimit(GetEs()));
     __vmx_vmwrite(VMCS_GUEST_FS_LIMIT, __segmentlimit(GetFs()));
     __vmx_vmwrite(VMCS_GUEST_GS_LIMIT, __segmentlimit(GetGs()));
+    __vmx_vmwrite(VMCS_GUEST_SS_LIMIT, __segmentlimit(GetSs()));
     __vmx_vmwrite(VMCS_GUEST_LDTR_LIMIT, __segmentlimit(GetLdtr()));
     __vmx_vmwrite(VMCS_GUEST_TR_LIMIT, __segmentlimit(GetTr()));
 
-    _sgdt(&Gdtr); // not in intrin.h ??
-    __sidt(&Idtr);
+    _sgdt(Gdtr);
+    __sidt(Idtr);
 
-    DbgPrint("Gdtr->Limit: %02X", Gdtr.Limit);
-    DbgPrint("Gdtr->BaseAddress: %02X", Gdtr.BaseAddress);
-    DbgPrint("Idtr->Limit: %02X", Idtr.Limit);
-    DbgPrint("Idtr->BaseAddress: %02X", Idtr.BaseAddress);
+    /*
+    DbgPrint("host_state.gdtr_base: [0x%02X]", Gdtr->BaseAddress);
+    DbgPrint("host_state.gdtr_limit: [0x%02X]", Gdtr->Limit);
+    DbgPrint("host_state.idtr_base: [0x%02X]", Idtr->BaseAddress);
+    DbgPrint("host_state.idtr_limit: [0x%02X]", Idtr->Limit);
+    */
 
-    __vmx_vmwrite(VMCS_GUEST_GDTR_LIMIT, Gdtr.Limit);
-    __vmx_vmwrite(VMCS_GUEST_IDTR_LIMIT, Idtr.Limit);
-       
-    // Base
-    __vmx_vmwrite(VMCS_GUEST_GDTR_BASE, Gdtr.BaseAddress);
-    __vmx_vmwrite(VMCS_GUEST_IDTR_BASE, Idtr.BaseAddress);
-
+    __vmx_vmwrite(VMCS_GUEST_GDTR_LIMIT, Gdtr->Limit);
+    __vmx_vmwrite(VMCS_GUEST_IDTR_LIMIT, Idtr->Limit);
+    __vmx_vmwrite(VMCS_GUEST_GDTR_BASE, Gdtr->BaseAddress);
+    __vmx_vmwrite(VMCS_GUEST_IDTR_BASE, Idtr->BaseAddress);
+    
+    // Bases
+    __vmx_vmwrite(VMCS_GUEST_ES_BASE, GetSegmentBase(Gdtr->BaseAddress, GetEs()));
+    __vmx_vmwrite(VMCS_GUEST_CS_BASE, GetSegmentBase(Gdtr->BaseAddress, GetCs()));
+    __vmx_vmwrite(VMCS_GUEST_SS_BASE, GetSegmentBase(Gdtr->BaseAddress, GetSs()));
+    __vmx_vmwrite(VMCS_GUEST_DS_BASE, GetSegmentBase(Gdtr->BaseAddress, GetDs()));
+    __vmx_vmwrite(VMCS_GUEST_FS_BASE, __readmsr(IA32_FS_BASE));
+    __vmx_vmwrite(VMCS_GUEST_GS_BASE, __readmsr(IA32_GS_BASE));
+    __vmx_vmwrite(VMCS_GUEST_LDTR_BASE, GetSegmentBase(Gdtr->BaseAddress, GetLdtr()));
+    __vmx_vmwrite(VMCS_GUEST_TR_BASE, GetSegmentBase(Gdtr->BaseAddress, GetTr()));
+    
     // Access Rights
     __vmx_vmwrite(VMCS_GUEST_CS_ACCESS_RIGHTS, ReadSegmentAccessRights(GetCs()));
     __vmx_vmwrite(VMCS_GUEST_SS_ACCESS_RIGHTS, ReadSegmentAccessRights(GetSs()));
@@ -138,70 +151,253 @@ BOOLEAN SetupVmcs(VIRTUAL_MACHINE_STATE* GuestState, EPT_POINTER* EPTP)
     __vmx_vmwrite(VMCS_GUEST_GS_ACCESS_RIGHTS, ReadSegmentAccessRights(GetGs()));
     __vmx_vmwrite(VMCS_GUEST_LDTR_ACCESS_RIGHTS, ReadSegmentAccessRights(GetLdtr()));
     __vmx_vmwrite(VMCS_GUEST_TR_ACCESS_RIGHTS, ReadSegmentAccessRights(GetTr()));
-     
-    __vmx_vmwrite(VMCS_GUEST_LDTR_BASE, GetSegmentBase(Gdtr.BaseAddress, GetLdtr()));
-    __vmx_vmwrite(VMCS_GUEST_TR_BASE, GetSegmentBase(Gdtr.BaseAddress, GetTr()));
+    // ------------ End Segmentation -----------------
 
-    __vmx_vmwrite(VMCS_GUEST_FS_BASE, __readmsr(IA32_FS_BASE));
-    __vmx_vmwrite(VMCS_GUEST_GS_BASE, __readmsr(IA32_GS_BASE));
-
-    __vmx_vmwrite(VMCS_GUEST_INTERRUPTIBILITY_STATE, 0);
-    __vmx_vmwrite(VMCS_GUEST_ACTIVITY_STATE, 0);   //Active state 
-
-    // read the msr
-    //IA32_VMX_ENTRY_CTLS_REGISTER registers;
-    //registers.AsUInt = __readmsr(IA32_VMX_ENTRY_CTLS);
-
-    //registers.Ia32EModeGuest;
-
-    __vmx_vmwrite(VMCS_CTRL_PROCESSOR_BASED_VM_EXECUTION_CONTROLS, AdjustControls(CPU_BASED_HLT_EXITING | CPU_BASED_ACTIVATE_SECONDARY_CONTROLS, IA32_VMX_PROCBASED_CTLS));
-    __vmx_vmwrite(VMCS_CTRL_SECONDARY_PROCESSOR_BASED_VM_EXECUTION_CONTROLS, AdjustControls(CPU_BASED_CTL2_RDTSCP /* | CPU_BASED_CTL2_ENABLE_EPT*/, IA32_VMX_PROCBASED_CTLS2));
-
-    
-    __vmx_vmwrite(VMCS_CTRL_PIN_BASED_VM_EXECUTION_CONTROLS, AdjustControls(0, IA32_VMX_PINBASED_CTLS));
-    __vmx_vmwrite(VMCS_CTRL_PRIMARY_VMEXIT_CONTROLS, AdjustControls(VM_EXIT_IA32E_MODE | VM_EXIT_ACK_INTR_ON_EXIT, IA32_VMX_EXIT_CTLS));
-    __vmx_vmwrite(VMCS_CTRL_VMENTRY_CONTROLS, AdjustControls(VM_ENTRY_IA32E_MODE, IA32_VMX_ENTRY_CTLS));
-
-    __vmx_vmwrite(VMCS_CTRL_CR3_TARGET_COUNT, 0);
-    __vmx_vmwrite(VMCS_CTRL_CR3_TARGET_VALUE_0, 0);
-    __vmx_vmwrite(VMCS_CTRL_CR3_TARGET_VALUE_1, 0);
-    __vmx_vmwrite(VMCS_CTRL_CR3_TARGET_VALUE_2, 0);
-    __vmx_vmwrite(VMCS_CTRL_CR3_TARGET_VALUE_3, 0);
+    __vmx_vmwrite(VMCS_GUEST_VMCS_LINK_POINTER, ~0ULL);
 
     __vmx_vmwrite(VMCS_GUEST_CR0, __readcr0());
     __vmx_vmwrite(VMCS_GUEST_CR3, __readcr3());
     __vmx_vmwrite(VMCS_GUEST_CR4, __readcr4());
 
-    __vmx_vmwrite(VMCS_GUEST_DR7, 0x400);
-
-    __vmx_vmwrite(VMCS_HOST_CR0, __readcr0());
-    __vmx_vmwrite(VMCS_HOST_CR3, __readcr3());
-    __vmx_vmwrite(VMCS_HOST_CR4, __readcr4());
+    //__vmx_vmwrite(VMCS_GUEST_DR7, 0x400);
 
     __vmx_vmwrite(VMCS_GUEST_RFLAGS, GetRflags());
-
     __vmx_vmwrite(VMCS_GUEST_SYSENTER_CS, __readmsr(IA32_SYSENTER_CS));
     __vmx_vmwrite(VMCS_GUEST_SYSENTER_EIP, __readmsr(IA32_SYSENTER_EIP));
     __vmx_vmwrite(VMCS_GUEST_SYSENTER_ESP, __readmsr(IA32_SYSENTER_ESP));
-    __vmx_vmwrite(VMCS_HOST_SYSENTER_CS, __readmsr(IA32_SYSENTER_CS));
-    __vmx_vmwrite(VMCS_HOST_SYSENTER_EIP, __readmsr(IA32_SYSENTER_EIP));
-    __vmx_vmwrite(VMCS_HOST_SYSENTER_ESP, __readmsr(IA32_SYSENTER_ESP));
 
-    __vmx_vmwrite(VMCS_HOST_TR_BASE, GetSegmentBase(Gdtr.BaseAddress, GetTr()));
+    __vmx_vmwrite(VMCS_GUEST_RSP, (ULONG64)g_VirtualGuestMemoryAddress);
+    __vmx_vmwrite(VMCS_GUEST_RIP, (ULONG64)g_VirtualGuestMemoryAddress);
+}
 
-    __vmx_vmwrite(VMCS_HOST_FS_BASE, __readmsr(IA32_FS_BASE));
-    __vmx_vmwrite(VMCS_HOST_GS_BASE, __readmsr(IA32_GS_BASE));
+/// <summary>
+/// Sets up all the VMCS control data.
+/// </summary>
+VOID SetupVmcsControlData() 
+{
+    DbgPrint("[hypoo] Setting up VMCS controls");
 
-    __vmx_vmwrite(VMCS_HOST_GDTR_BASE, Gdtr.BaseAddress);
-    __vmx_vmwrite(VMCS_HOST_IDTR_BASE, Idtr.BaseAddress);
+    IA32_VMX_PINBASED_CTLS_REGISTER PinbasedControls = { 0 };
+    IA32_VMX_PROCBASED_CTLS_REGISTER ProcbasedControls = { 0 };
+    IA32_VMX_PROCBASED_CTLS2_REGISTER SecondaryControls = { 0 };
+    IA32_VMX_ENTRY_CTLS_REGISTER EntryControls = { 0 };
+    IA32_VMX_EXIT_CTLS_REGISTER ExitControls = { 0 };
 
-    __vmx_vmwrite(VMCS_GUEST_RSP, (ULONG64)g_VirtualGuestMemoryAddress); // setup guest sp
-    __vmx_vmwrite(VMCS_GUEST_RIP, (ULONG64)g_VirtualGuestMemoryAddress); // setup guest ip
+    EntryControls.Ia32EModeGuest = TRUE;
+    SetEntryControls(&EntryControls);
 
-    __vmx_vmwrite(VMCS_HOST_RSP, ((ULONG64)GuestState->VmmStack + VMM_STACK_SIZE - 1));
-    __vmx_vmwrite(VMCS_HOST_RIP, (ULONG64)AsmVmexitHandler);
+    ExitControls.HostAddressSpaceSize = TRUE;
+    SetExitControls(&ExitControls);
+
+    ProcbasedControls.ActivateSecondaryControls = TRUE;
+    // ProcbasedControls.UseMsrBitmaps = TRUE;
+    SetProcbasedControls(&ProcbasedControls);
+
+    // later
+    SetSecondaryControls(&SecondaryControls);
+
+    __vmx_vmwrite(IA32_VMX_PINBASED_CTLS, PinbasedControls.AsUInt);
+    __vmx_vmwrite(IA32_VMX_PROCBASED_CTLS, ProcbasedControls.AsUInt);
+    __vmx_vmwrite(IA32_VMX_PROCBASED_CTLS2, SecondaryControls.AsUInt);
+    __vmx_vmwrite(IA32_VMX_ENTRY_CTLS, EntryControls.AsUInt);
+    __vmx_vmwrite(IA32_VMX_EXIT_CTLS, ExitControls.AsUInt);
+}
+
+/// <summary>
+/// 
+/// </summary>
+/// <param name="EntryControls"></param>
+VOID SetEntryControls(IA32_VMX_ENTRY_CTLS_REGISTER* EntryControls) 
+{
+    IA32_VMX_BASIC_REGISTER BasicControls = GetBasicControls();
+
+    UINT32 CapabilityMSR = BasicControls.VmxControls ? IA32_VMX_TRUE_ENTRY_CTLS : IA32_VMX_ENTRY_CTLS;
+
+    AdjustControl(CapabilityMSR, &EntryControls->AsUInt);
+}
+
+/// <summary>
+/// 
+/// </summary>
+/// <param name="ExitControls"></param>
+VOID SetExitControls(IA32_VMX_EXIT_CTLS_REGISTER* ExitControls) 
+{
+    IA32_VMX_BASIC_REGISTER BasicControls = GetBasicControls();
+
+    UINT32 CapabilityMSR = BasicControls.VmxControls ? IA32_VMX_TRUE_EXIT_CTLS : IA32_VMX_EXIT_CTLS;
+
+    AdjustControl(CapabilityMSR, &ExitControls->AsUInt);
+}
+
+/// <summary>
+/// 
+/// </summary>
+/// <param name="PinbasedControls"></param>
+VOID SetPinbasedControls(IA32_VMX_PINBASED_CTLS_REGISTER* PinbasedControls) 
+{
+    IA32_VMX_BASIC_REGISTER BasicControls = GetBasicControls();
+
+    UINT32 CapabilityMSR = BasicControls.VmxControls ? IA32_VMX_TRUE_PINBASED_CTLS : IA32_VMX_PINBASED_CTLS;
+
+    AdjustControl(CapabilityMSR, &PinbasedControls->AsUInt);
+}
+
+/// <summary>
+/// 
+/// </summary>
+/// <param name="ProcbasedControls"></param>
+VOID SetProcbasedControls(IA32_VMX_PROCBASED_CTLS_REGISTER* ProcbasedControls) 
+{
+    IA32_VMX_BASIC_REGISTER BasicControls = GetBasicControls();
+
+    UINT32 CapabilityMSR = BasicControls.VmxControls ? IA32_VMX_TRUE_PROCBASED_CTLS : IA32_VMX_PROCBASED_CTLS;
+
+    AdjustControl(CapabilityMSR, &ProcbasedControls->AsUInt);
+}
+
+/// <summary>
+/// 
+/// </summary>
+/// <param name="SecondaryControls"></param>
+VOID SetSecondaryControls(IA32_VMX_PROCBASED_CTLS2_REGISTER* SecondaryControls) 
+{
+    IA32_VMX_BASIC_REGISTER BasicControls = GetBasicControls();
+
+    UINT32 CapabilityMSR = IA32_VMX_PROCBASED_CTLS2;
+
+    AdjustControl(CapabilityMSR, &SecondaryControls->AsUInt);
+}
+
+/// <summary>
+/// 
+/// </summary>
+/// <param name="CapabilityMSR"></param>
+/// <param name="Value"></param>
+VOID AdjustControl(UINT32 CapabilityMSR, UINT32* Value) 
+{
+    IA32_VMX_TRUE_CTLS_REGISTER Capabilities = { 0 };
+
+    Capabilities.AsUInt = __readmsr(CapabilityMSR);
+
+    *Value |= Capabilities.Allowed0Settings;
+    *Value &= Capabilities.Allowed1Settings;
+}
+
+IA32_VMX_BASIC_REGISTER GetBasicControls()
+{
+    IA32_VMX_BASIC_REGISTER BasicControls = { 0 };
+
+    BasicControls.AsUInt = __readmsr(IA32_VMX_BASIC);
+
+    return BasicControls;
+}
+
+BOOLEAN SetupVmcs(VIRTUAL_MACHINE_STATE* GuestState, EPT_POINTER* EPTP) 
+{
+    SEGMENT_DESCRIPTOR_REGISTER_64*  Gdtr = { 0 };
+    SEGMENT_DESCRIPTOR_REGISTER_64*  Idtr = { 0 };
+
+    SetupVmcsControlData();
+
+    SetupVmcsGuestData(&Gdtr, &Idtr);
+    SetupVmcsHostData(&Gdtr, &Idtr);
+    
+    DbgPrint("[hypoo] VMCS was setup successfully (i think lul)");
+
+    //DebugVmcs(&Gdtr, &Idtr);
 
     return TRUE;
+}
+
+// Attempt to find out wtf is going on
+VOID DebugVmcs(SEGMENT_DESCRIPTOR_REGISTER_64* Gdtr, SEGMENT_DESCRIPTOR_REGISTER_64* Idtr)
+{
+    UINT64 pinbased_ctls = __readmsr(IA32_VMX_PINBASED_CTLS);
+    DbgPrint("IA32_VMX_PINBASED_CTLS: [0x%02X]", pinbased_ctls);
+
+    UINT64 procbased_ctls = __readmsr(IA32_VMX_PROCBASED_CTLS);
+    DbgPrint("IA32_VMX_PROCBASED_CTLS: [0x%02X]", procbased_ctls);
+
+    UINT64 procbased_ctls2 = __readmsr(IA32_VMX_PROCBASED_CTLS2);
+    DbgPrint("IA32_VMX_PROCBASED_CTLS2: [0x%02X]", procbased_ctls2);
+
+    UINT64 vmxexit_ctls = __readmsr(IA32_VMX_EXIT_CTLS);
+    DbgPrint("IA32_VMX_EXIT_CTLS: [0x%02X]", vmxexit_ctls);
+
+    UINT64 vmxentry_ctls = __readmsr(IA32_VMX_ENTRY_CTLS);
+    DbgPrint("IA32_VMX_ENTRY_CTLS: [0x%02X]", vmxentry_ctls);
+
+    UINT64 ept_vpid_cap = __readmsr(IA32_VMX_EPT_VPID_CAP);
+    DbgPrint("IA32_VMX_EPT_VPID_CAP: [0x%02X]", ept_vpid_cap);
+
+    UINT64 vmx_vmfunc = __readmsr(IA32_VMX_VMFUNC);
+    DbgPrint("IA32_VMX_VMFUNC: [0x%02X]", vmx_vmfunc);
+
+    UINT64 cr0_fixed0 = __readmsr(IA32_VMX_CR0_FIXED0);
+    DbgPrint("IA32_VMX_CR0_FIXED0: [0x%02X]", cr0_fixed0);
+
+    UINT64 cr0_fixed1 = __readmsr(IA32_VMX_CR0_FIXED1);
+    DbgPrint("IA32_VMX_CR0_FIXED1: [0x%02X]", cr0_fixed1);
+
+    UINT64 cr4_fixed0 = __readmsr(IA32_VMX_CR4_FIXED0);
+    DbgPrint("IA32_VMX_CR4_FIXED0: [0x%02X]", cr4_fixed0);
+
+    UINT64 cr4_fixed1 = __readmsr(IA32_VMX_CR4_FIXED1);
+    DbgPrint("IA32_VMX_CR4_FIXED1: [0x%02X]", cr4_fixed1);
+
+    // HOST STATE STUFF
+
+    UINT64 cr0 = __readcr0();
+    DbgPrint("host_state.cr0: [0x%02X]", cr0);
+
+    UINT64 cr3 = __readcr3();
+    DbgPrint("host_state.cr3: [0x%02X]", cr3);
+
+    UINT64 cr4 = __readcr4();
+    DbgPrint("host_state.cr4: [0x%02X]", cr4);
+
+    UINT64 efer_msr = __readmsr(IA32_EFER);
+    DbgPrint("host_state.efer_msr: [0x%02X]", efer_msr);
+
+    UINT64 fs_base = __readmsr(IA32_FS_BASE);
+    DbgPrint("host_state.fs_base: [0x%02X]", fs_base);
+
+    // gdtr_base
+    DbgPrint("host_state.gdtr_base: [0x%02X]", Gdtr->BaseAddress);
+
+    UINT64 gs_base = __readmsr(IA32_GS_BASE);
+    DbgPrint("host_state.gs_base: [0x%02X]", gs_base);
+
+    // idtr_base
+    DbgPrint("host_state.idtr_base: [0x%02X]", Idtr->BaseAddress);
+
+    UINT64 pat_msr = __readmsr(IA32_PAT);
+    DbgPrint("host_state.pat_msr: [0x%02X]", pat_msr);
+
+    DbgPrint("host_state.rip: [0x%02X]", (ULONG64)AsmVmexitHandler);
+
+    DbgPrint("host_state.rsp: [0x%02X]", ((ULONG64)g_GuestState->VmmStack + VMM_STACK_SIZE - 1));
+
+    DbgPrint("host_state.selector_es: [0x%02X]", GetEs());
+    DbgPrint("host_state.selector_cs: [0x%02X]", GetCs());
+    DbgPrint("host_state.selector_ss: [0x%02X]", GetSs());
+    DbgPrint("host_state.selector_ds: [0x%02X]", GetDs());
+    DbgPrint("host_state.selector_fs: [0x%02X]", GetFs());
+    DbgPrint("host_state.selector_gs: [0x%02X]", GetGs());
+
+    UINT64 sysenter_cs_msr = __readmsr(IA32_SYSENTER_CS);
+    DbgPrint("host_state.sysenter_cs_msr: [0x%02X]", sysenter_cs_msr);
+
+    UINT64 sysenter_eip_msr = __readmsr(IA32_SYSENTER_EIP);
+    DbgPrint("host_state.sysenter_eip_msr: [0x%02X]", sysenter_eip_msr);
+
+    UINT64 sysenter_esp_msr = __readmsr(IA32_SYSENTER_ESP);
+    DbgPrint("host_state.sysenter_esp_msr: [0x%02X]", sysenter_esp_msr);
+
+    DbgPrint("host_state.tr_base: [0x%02X]", GetSegmentBase(Gdtr->BaseAddress, GetTr()));
+
+    DbgPrint("vmxon_ptr: [0x%02X]", g_GuestState->VmxonRegion);
+    
 }
 
 // https://revers.engineering/day-4-vmcs-segmentation-ops/
