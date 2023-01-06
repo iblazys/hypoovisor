@@ -249,9 +249,17 @@ VOID LaunchVm(int ProcessorID, EPT_POINTER* EPTP)
     DbgPrint("[hypoo] Setting up VMCS...");
     SetupVmcs(&g_GuestState[ProcessorID], EPTP);
 
-    __vmx_vmlaunch();
+    DbgPrint("Executing VMLAUNCH");
 
-    DbgPrint("===== UH WE SHOULDNT SEE THIS ======");
+    INT32 Status = __vmx_vmlaunch();
+
+    if (Status != 0)
+    {
+        unsigned __int32 VMXError;
+        __vmx_vmread(VMCS_VM_INSTRUCTION_ERROR, &VMXError);
+        //__vmx_vmread(0xfffffffe, &VMXError); VMCS_LAUNCH_STATE_FIELD_ENCODING, for auditor
+        DbgPrint("VMLAUNCH Failed! VMLAUNCH returned [%d], VMX Error: 0x%0x", Status, VMXError);
+    }
 
     // if VMLAUNCH succeeds will never be here!
     

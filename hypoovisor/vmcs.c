@@ -196,11 +196,11 @@ VOID SetupVmcsControlData()
     // later
     SetSecondaryControls(&SecondaryControls);
 
-    __vmx_vmwrite(IA32_VMX_PINBASED_CTLS, PinbasedControls.AsUInt);
-    __vmx_vmwrite(IA32_VMX_PROCBASED_CTLS, ProcbasedControls.AsUInt);
-    __vmx_vmwrite(IA32_VMX_PROCBASED_CTLS2, SecondaryControls.AsUInt);
-    __vmx_vmwrite(IA32_VMX_ENTRY_CTLS, EntryControls.AsUInt);
-    __vmx_vmwrite(IA32_VMX_EXIT_CTLS, ExitControls.AsUInt);
+    __vmx_vmwrite(VMCS_CTRL_PIN_BASED_VM_EXECUTION_CONTROLS, PinbasedControls.AsUInt);
+    __vmx_vmwrite(VMCS_CTRL_PROCESSOR_BASED_VM_EXECUTION_CONTROLS, ProcbasedControls.AsUInt);
+    __vmx_vmwrite(VMCS_CTRL_SECONDARY_PROCESSOR_BASED_VM_EXECUTION_CONTROLS, SecondaryControls.AsUInt);
+    __vmx_vmwrite(VMCS_CTRL_VMENTRY_CONTROLS, EntryControls.AsUInt);
+    __vmx_vmwrite(VMCS_CTRL_PRIMARY_VMEXIT_CONTROLS, ExitControls.AsUInt);
 }
 
 /// <summary>
