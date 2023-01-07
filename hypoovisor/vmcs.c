@@ -53,13 +53,13 @@ VOID SetupVmcsHostData(SEGMENT_DESCRIPTOR_REGISTER_64* Gdtr, SEGMENT_DESCRIPTOR_
 {
     DbgPrint("[hypoo] Setting up VMCS host data");
 
-    __vmx_vmwrite(VMCS_HOST_ES_SELECTOR, GetEs() & ~0xF8);
-    __vmx_vmwrite(VMCS_HOST_CS_SELECTOR, GetCs() & ~0xF8);
-    __vmx_vmwrite(VMCS_HOST_SS_SELECTOR, GetSs() & ~0xF8);
-    __vmx_vmwrite(VMCS_HOST_DS_SELECTOR, GetDs() & ~0xF8);
-    __vmx_vmwrite(VMCS_HOST_FS_SELECTOR, GetFs() & ~0xF8);
-    __vmx_vmwrite(VMCS_HOST_GS_SELECTOR, GetGs() & ~0xF8);
-    __vmx_vmwrite(VMCS_HOST_TR_SELECTOR, GetTr() & ~0xF8);
+    __vmx_vmwrite(VMCS_HOST_ES_SELECTOR, GetEs() & 0xF8);
+    __vmx_vmwrite(VMCS_HOST_CS_SELECTOR, GetCs() & 0xF8);
+    __vmx_vmwrite(VMCS_HOST_SS_SELECTOR, GetSs() & 0xF8);
+    __vmx_vmwrite(VMCS_HOST_DS_SELECTOR, GetDs() & 0xF8);
+    __vmx_vmwrite(VMCS_HOST_FS_SELECTOR, GetFs() & 0xF8);
+    __vmx_vmwrite(VMCS_HOST_GS_SELECTOR, GetGs() & 0xF8);
+    __vmx_vmwrite(VMCS_HOST_TR_SELECTOR, GetTr() & 0xF8);
 
     __vmx_vmwrite(VMCS_HOST_CR0, __readcr0());
     __vmx_vmwrite(VMCS_HOST_CR3, __readcr3());
@@ -76,7 +76,8 @@ VOID SetupVmcsHostData(SEGMENT_DESCRIPTOR_REGISTER_64* Gdtr, SEGMENT_DESCRIPTOR_
 
     __vmx_vmwrite(VMCS_HOST_GDTR_BASE, Gdtr->BaseAddress);
     __vmx_vmwrite(VMCS_HOST_IDTR_BASE, Idtr->BaseAddress);
-
+    
+    // (((ULONG64)g_GuestState->VmmStack + VMM_STACK_SIZE) & ~0b1111ull) - 8)
     __vmx_vmwrite(VMCS_HOST_RSP, ((ULONG64)g_GuestState->VmmStack + VMM_STACK_SIZE - 1));
     __vmx_vmwrite(VMCS_HOST_RIP, (ULONG64)AsmVmexitHandler);
 
@@ -159,7 +160,12 @@ VOID SetupVmcsGuestData(SEGMENT_DESCRIPTOR_REGISTER_64* Gdtr, SEGMENT_DESCRIPTOR
     __vmx_vmwrite(VMCS_GUEST_CR3, __readcr3());
     __vmx_vmwrite(VMCS_GUEST_CR4, __readcr4());
 
-    //__vmx_vmwrite(VMCS_GUEST_DR7, 0x400);
+    __vmx_vmwrite(VMCS_GUEST_DEBUGCTL, __readmsr(IA32_DEBUGCTL));
+
+    __vmx_vmwrite(VMCS_GUEST_DR7, 0x400);
+
+    __vmx_vmwrite(VMCS_GUEST_INTERRUPTIBILITY_STATE, 0);
+    __vmx_vmwrite(VMCS_GUEST_ACTIVITY_STATE, 0); // Active state
 
     __vmx_vmwrite(VMCS_GUEST_RFLAGS, GetRflags());
     __vmx_vmwrite(VMCS_GUEST_SYSENTER_CS, __readmsr(IA32_SYSENTER_CS));
@@ -190,10 +196,10 @@ VOID SetupVmcsControlData()
     SetEntryControls(&EntryControls);
 
     __vmx_vmwrite(VMCS_CTRL_VMENTRY_CONTROLS, EntryControls.AsUInt);
-
     __vmx_vmwrite(VMCS_CTRL_VMENTRY_MSR_LOAD_COUNT, 0);
     __vmx_vmwrite(VMCS_CTRL_VMENTRY_INTERRUPTION_INFORMATION_FIELD, 0);
-    __vmx_vmwrite(VMCS_CTRL_VMENTRY_EXCEPTION_ERROR_CODE, 0);
+
+    //__vmx_vmwrite(VMCS_CTRL_VMENTRY_EXCEPTION_ERROR_CODE, 0);
 
     // ------------ VM Exit Controls ------------
 
@@ -202,16 +208,21 @@ VOID SetupVmcsControlData()
     SetExitControls(&ExitControls);
 
     __vmx_vmwrite(VMCS_CTRL_PRIMARY_VMEXIT_CONTROLS, ExitControls.AsUInt);
+    __vmx_vmwrite(VMCS_CTRL_VMEXIT_MSR_STORE_COUNT, 0);
+    __vmx_vmwrite(VMCS_CTRL_VMEXIT_MSR_LOAD_COUNT, 0);
 
     // ------------ Procbased Controls ------------
 
     ProcbasedControls.ActivateSecondaryControls = TRUE;
+    ProcbasedControls.HltExiting = TRUE; // Bsod when true
 
     SetProcbasedControls(&ProcbasedControls);
 
     __vmx_vmwrite(VMCS_CTRL_PROCESSOR_BASED_VM_EXECUTION_CONTROLS, ProcbasedControls.AsUInt);
 
     // ------------ Secondary Procbased Controls ------------
+
+    SecondaryControls.EnableRdtscp = TRUE;
 
     SetSecondaryControls(&SecondaryControls);
 
@@ -224,6 +235,17 @@ VOID SetupVmcsControlData()
     __vmx_vmwrite(VMCS_CTRL_PIN_BASED_VM_EXECUTION_CONTROLS, PinbasedControls.AsUInt);
 
     // ------------ Other Controls ------------
+
+    __vmx_vmwrite(VMCS_CTRL_PAGEFAULT_ERROR_CODE_MASK, 0);
+    __vmx_vmwrite(VMCS_CTRL_PAGEFAULT_ERROR_CODE_MATCH, 0);
+
+    __vmx_vmwrite(VMCS_CTRL_TSC_OFFSET, 0);
+
+    __vmx_vmwrite(VMCS_CTRL_CR3_TARGET_COUNT, 0);
+    __vmx_vmwrite(VMCS_CTRL_CR3_TARGET_VALUE_0, 0);
+    __vmx_vmwrite(VMCS_CTRL_CR3_TARGET_VALUE_1, 0);
+    __vmx_vmwrite(VMCS_CTRL_CR3_TARGET_VALUE_2, 0);
+    __vmx_vmwrite(VMCS_CTRL_CR3_TARGET_VALUE_3, 0);
 
 }
 
