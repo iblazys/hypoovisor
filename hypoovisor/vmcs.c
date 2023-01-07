@@ -183,24 +183,48 @@ VOID SetupVmcsControlData()
     IA32_VMX_ENTRY_CTLS_REGISTER EntryControls = { 0 };
     IA32_VMX_EXIT_CTLS_REGISTER ExitControls = { 0 };
 
+    // ------------ VM Entry Controls ------------
+
     EntryControls.Ia32EModeGuest = TRUE;
+
     SetEntryControls(&EntryControls);
 
+    __vmx_vmwrite(VMCS_CTRL_VMENTRY_CONTROLS, EntryControls.AsUInt);
+
+    __vmx_vmwrite(VMCS_CTRL_VMENTRY_MSR_LOAD_COUNT, 0);
+    __vmx_vmwrite(VMCS_CTRL_VMENTRY_INTERRUPTION_INFORMATION_FIELD, 0);
+    __vmx_vmwrite(VMCS_CTRL_VMENTRY_EXCEPTION_ERROR_CODE, 0);
+
+    // ------------ VM Exit Controls ------------
+
     ExitControls.HostAddressSpaceSize = TRUE;
+
     SetExitControls(&ExitControls);
 
+    __vmx_vmwrite(VMCS_CTRL_PRIMARY_VMEXIT_CONTROLS, ExitControls.AsUInt);
+
+    // ------------ Procbased Controls ------------
+
     ProcbasedControls.ActivateSecondaryControls = TRUE;
-    // ProcbasedControls.UseMsrBitmaps = TRUE;
+
     SetProcbasedControls(&ProcbasedControls);
 
-    // later
+    __vmx_vmwrite(VMCS_CTRL_PROCESSOR_BASED_VM_EXECUTION_CONTROLS, ProcbasedControls.AsUInt);
+
+    // ------------ Secondary Procbased Controls ------------
+
     SetSecondaryControls(&SecondaryControls);
 
-    __vmx_vmwrite(VMCS_CTRL_PIN_BASED_VM_EXECUTION_CONTROLS, PinbasedControls.AsUInt);
-    __vmx_vmwrite(VMCS_CTRL_PROCESSOR_BASED_VM_EXECUTION_CONTROLS, ProcbasedControls.AsUInt);
     __vmx_vmwrite(VMCS_CTRL_SECONDARY_PROCESSOR_BASED_VM_EXECUTION_CONTROLS, SecondaryControls.AsUInt);
-    __vmx_vmwrite(VMCS_CTRL_VMENTRY_CONTROLS, EntryControls.AsUInt);
-    __vmx_vmwrite(VMCS_CTRL_PRIMARY_VMEXIT_CONTROLS, ExitControls.AsUInt);
+
+    // ------------ Secondary Procbased Controls ------------
+
+    SetPinbasedControls(&PinbasedControls);
+
+    __vmx_vmwrite(VMCS_CTRL_PIN_BASED_VM_EXECUTION_CONTROLS, PinbasedControls.AsUInt);
+
+    // ------------ Other Controls ------------
+
 }
 
 /// <summary>
@@ -304,100 +328,9 @@ BOOLEAN SetupVmcs(VIRTUAL_MACHINE_STATE* GuestState, EPT_POINTER* EPTP)
     
     DbgPrint("[hypoo] VMCS was setup successfully (i think lul)");
 
-    //DebugVmcs(&Gdtr, &Idtr);
+    DebugVmcs(&Gdtr, &Idtr);
 
     return TRUE;
-}
-
-// Attempt to find out wtf is going on
-VOID DebugVmcs(SEGMENT_DESCRIPTOR_REGISTER_64* Gdtr, SEGMENT_DESCRIPTOR_REGISTER_64* Idtr)
-{
-    UINT64 pinbased_ctls = __readmsr(IA32_VMX_PINBASED_CTLS);
-    DbgPrint("IA32_VMX_PINBASED_CTLS: [0x%02X]", pinbased_ctls);
-
-    UINT64 procbased_ctls = __readmsr(IA32_VMX_PROCBASED_CTLS);
-    DbgPrint("IA32_VMX_PROCBASED_CTLS: [0x%02X]", procbased_ctls);
-
-    UINT64 procbased_ctls2 = __readmsr(IA32_VMX_PROCBASED_CTLS2);
-    DbgPrint("IA32_VMX_PROCBASED_CTLS2: [0x%02X]", procbased_ctls2);
-
-    UINT64 vmxexit_ctls = __readmsr(IA32_VMX_EXIT_CTLS);
-    DbgPrint("IA32_VMX_EXIT_CTLS: [0x%02X]", vmxexit_ctls);
-
-    UINT64 vmxentry_ctls = __readmsr(IA32_VMX_ENTRY_CTLS);
-    DbgPrint("IA32_VMX_ENTRY_CTLS: [0x%02X]", vmxentry_ctls);
-
-    UINT64 ept_vpid_cap = __readmsr(IA32_VMX_EPT_VPID_CAP);
-    DbgPrint("IA32_VMX_EPT_VPID_CAP: [0x%02X]", ept_vpid_cap);
-
-    UINT64 vmx_vmfunc = __readmsr(IA32_VMX_VMFUNC);
-    DbgPrint("IA32_VMX_VMFUNC: [0x%02X]", vmx_vmfunc);
-
-    UINT64 cr0_fixed0 = __readmsr(IA32_VMX_CR0_FIXED0);
-    DbgPrint("IA32_VMX_CR0_FIXED0: [0x%02X]", cr0_fixed0);
-
-    UINT64 cr0_fixed1 = __readmsr(IA32_VMX_CR0_FIXED1);
-    DbgPrint("IA32_VMX_CR0_FIXED1: [0x%02X]", cr0_fixed1);
-
-    UINT64 cr4_fixed0 = __readmsr(IA32_VMX_CR4_FIXED0);
-    DbgPrint("IA32_VMX_CR4_FIXED0: [0x%02X]", cr4_fixed0);
-
-    UINT64 cr4_fixed1 = __readmsr(IA32_VMX_CR4_FIXED1);
-    DbgPrint("IA32_VMX_CR4_FIXED1: [0x%02X]", cr4_fixed1);
-
-    // HOST STATE STUFF
-
-    UINT64 cr0 = __readcr0();
-    DbgPrint("host_state.cr0: [0x%02X]", cr0);
-
-    UINT64 cr3 = __readcr3();
-    DbgPrint("host_state.cr3: [0x%02X]", cr3);
-
-    UINT64 cr4 = __readcr4();
-    DbgPrint("host_state.cr4: [0x%02X]", cr4);
-
-    UINT64 efer_msr = __readmsr(IA32_EFER);
-    DbgPrint("host_state.efer_msr: [0x%02X]", efer_msr);
-
-    UINT64 fs_base = __readmsr(IA32_FS_BASE);
-    DbgPrint("host_state.fs_base: [0x%02X]", fs_base);
-
-    // gdtr_base
-    DbgPrint("host_state.gdtr_base: [0x%02X]", Gdtr->BaseAddress);
-
-    UINT64 gs_base = __readmsr(IA32_GS_BASE);
-    DbgPrint("host_state.gs_base: [0x%02X]", gs_base);
-
-    // idtr_base
-    DbgPrint("host_state.idtr_base: [0x%02X]", Idtr->BaseAddress);
-
-    UINT64 pat_msr = __readmsr(IA32_PAT);
-    DbgPrint("host_state.pat_msr: [0x%02X]", pat_msr);
-
-    DbgPrint("host_state.rip: [0x%02X]", (ULONG64)AsmVmexitHandler);
-
-    DbgPrint("host_state.rsp: [0x%02X]", ((ULONG64)g_GuestState->VmmStack + VMM_STACK_SIZE - 1));
-
-    DbgPrint("host_state.selector_es: [0x%02X]", GetEs());
-    DbgPrint("host_state.selector_cs: [0x%02X]", GetCs());
-    DbgPrint("host_state.selector_ss: [0x%02X]", GetSs());
-    DbgPrint("host_state.selector_ds: [0x%02X]", GetDs());
-    DbgPrint("host_state.selector_fs: [0x%02X]", GetFs());
-    DbgPrint("host_state.selector_gs: [0x%02X]", GetGs());
-
-    UINT64 sysenter_cs_msr = __readmsr(IA32_SYSENTER_CS);
-    DbgPrint("host_state.sysenter_cs_msr: [0x%02X]", sysenter_cs_msr);
-
-    UINT64 sysenter_eip_msr = __readmsr(IA32_SYSENTER_EIP);
-    DbgPrint("host_state.sysenter_eip_msr: [0x%02X]", sysenter_eip_msr);
-
-    UINT64 sysenter_esp_msr = __readmsr(IA32_SYSENTER_ESP);
-    DbgPrint("host_state.sysenter_esp_msr: [0x%02X]", sysenter_esp_msr);
-
-    DbgPrint("host_state.tr_base: [0x%02X]", GetSegmentBase(Gdtr->BaseAddress, GetTr()));
-
-    DbgPrint("vmxon_ptr: [0x%02X]", g_GuestState->VmxonRegion);
-    
 }
 
 // https://revers.engineering/day-4-vmcs-segmentation-ops/
@@ -425,6 +358,7 @@ UINT32 ReadSegmentAccessRights(UINT16 SegmentSelector)
     // remember that the first byte of the access rights returned
     // are not used in VMX access right format.
     //
+    
     VmxAccessRights.AsUInt = (__load_ar(Selector) >> 8);
     VmxAccessRights.Unusable = 0;
     VmxAccessRights.Reserved1 = 0;
@@ -485,62 +419,160 @@ ULONG AdjustControls(ULONG CTL_CODE, ULONG Msr)
     return CTL_CODE;
 }
 
-/*
-// these functions are from 2015 lol... hard to match these old names up with ia32.h
-VOID FillGuestSelectorData(PVOID GdtBase, ULONG Segreg, USHORT Selector)
+/// <summary>
+/// Omega debug print lul
+/// </summary>
+/// <param name="Gdtr"></param>
+/// <param name="Idtr"></param>
+/// <returns></returns>
+VOID DebugVmcs(SEGMENT_DESCRIPTOR_REGISTER_64* Gdtr, SEGMENT_DESCRIPTOR_REGISTER_64* Idtr)
 {
-    SEGMENT_SELECTOR SegmentSelector = { 0 };
-    ULONG            AccessRights;
+    DbgPrint("==================DEBUG==================");
 
-    GetSegmentDescriptor(&SegmentSelector, Selector, GdtBase);
-    AccessRights = ((PUCHAR)&SegmentSelector.ATTRIBUTES)[0] + (((PUCHAR)&SegmentSelector.ATTRIBUTES)[1] << 12);
+    DbgPrint("==================CAPABILITIES==================\n");
 
-    if (!Selector)
-        AccessRights |= 0x10000;
+    DbgPrint("[0x%016X] = IA32_VMX_BASIC", __readmsr(IA32_VMX_BASIC));
 
-    __vmx_vmwrite(VMCS_GUEST_ES_SELECTOR + Segreg * 2, Selector);
-    __vmx_vmwrite(VMCS_GUEST_ES_LIMIT + Segreg * 2, SegmentSelector.LIMIT);
-    __vmx_vmwrite(VMCS_GUEST_ES_ACCESS_RIGHTS + Segreg * 2, AccessRights);
-    __vmx_vmwrite(VMCS_GUEST_ES_BASE + Segreg * 2, SegmentSelector.BASE);
+    DbgPrint("[0x%016X] = IA32_VMX_PINBASED_CTLS", __readmsr(IA32_VMX_PINBASED_CTLS));
+
+    DbgPrint("[0x%016X] = IA32_VMX_PROCBASED_CTLS", __readmsr(IA32_VMX_PROCBASED_CTLS));
+
+    DbgPrint("[0x%016X] = IA32_VMX_PROCBASED_CTLS2", __readmsr(IA32_VMX_PROCBASED_CTLS2));
+
+    DbgPrint("[0x%016X] = IA32_VMX_EXIT_CTLS", __readmsr(IA32_VMX_EXIT_CTLS));
+
+    DbgPrint("[0x%016X] = IA32_VMX_ENTRY_CTLS", __readmsr(IA32_VMX_ENTRY_CTLS));
+
+    DbgPrint("[0x%016X] = IA32_VMX_MISC", __readmsr(IA32_VMX_MISC));
+
+    DbgPrint("[0x%016X] = IA32_VMX_EPT_VPID_CAP", __readmsr(IA32_VMX_EPT_VPID_CAP));
+
+    DbgPrint("[0x%016X] = IA32_VMX_VMFUNC", __readmsr(IA32_VMX_VMFUNC));
+
+    DbgPrint("[0x%016X] = IA32_VMX_CR0_FIXED0", __readmsr(IA32_VMX_CR0_FIXED0));
+
+    DbgPrint("[0x%016X] = IA32_VMX_CR0_FIXED1", __readmsr(IA32_VMX_CR0_FIXED1));
+
+    DbgPrint("[0x%016X] = IA32_VMX_CR4_FIXED0", __readmsr(IA32_VMX_CR4_FIXED0));
+
+    DbgPrint("[0x%016X] = IA32_VMX_CR4_FIXED1", __readmsr(IA32_VMX_CR4_FIXED1));
+
+    DbgPrint("[0x%016X] = IA32_VMX_VMCS_ENUM", __readmsr(IA32_VMX_VMCS_ENUM));
+
+    DbgPrint("[0x%016X] = IA32_VMX_TRUE_PINBASED_CTLS", __readmsr(IA32_VMX_TRUE_PINBASED_CTLS));
+
+    DbgPrint("[0x%016X] = IA32_VMX_TRUE_PROCBASED_CTLS", __readmsr(IA32_VMX_TRUE_PROCBASED_CTLS));
+
+    DbgPrint("[0x%016X] = IA32_VMX_TRUE_ENTRY_CTLS", __readmsr(IA32_VMX_TRUE_ENTRY_CTLS));
+
+    DbgPrint("[0x%016X] = IA32_VMX_TRUE_EXIT_CTLS", __readmsr(IA32_VMX_TRUE_EXIT_CTLS));
+
+
+    DbgPrint("==================HOST STATE==================\n");
+
+    UINT64 cr0 = __readcr0();
+    DbgPrint("host_state.cr0: [0x%02X]", cr0);
+
+    UINT64 cr3 = __readcr3();
+    DbgPrint("host_state.cr3: [0x%02X]", cr3);
+
+    UINT64 cr4 = __readcr4();
+    DbgPrint("host_state.cr4: [0x%02X]", cr4);
+
+    UINT64 efer_msr = __readmsr(IA32_EFER);
+    DbgPrint("host_state.efer_msr: [0x%02X]", efer_msr);
+
+    UINT64 fs_base = __readmsr(IA32_FS_BASE);
+    DbgPrint("host_state.fs_base: [0x%02X]", fs_base);
+
+    // gdtr_base
+    DbgPrint("host_state.gdtr_base: [0x%02X]", Gdtr->BaseAddress);
+
+    UINT64 gs_base = __readmsr(IA32_GS_BASE);
+    DbgPrint("host_state.gs_base: [0x%02X]", gs_base);
+
+    // idtr_base
+    DbgPrint("host_state.idtr_base: [0x%02X]", Idtr->BaseAddress);
+
+    UINT64 pat_msr = __readmsr(IA32_PAT);
+    DbgPrint("host_state.pat_msr: [0x%02X]", pat_msr);
+
+    DbgPrint("host_state.rip: [0x%02X]", (ULONG64)AsmVmexitHandler);
+
+    DbgPrint("host_state.rsp: [0x%02X]", ((ULONG64)g_GuestState->VmmStack + VMM_STACK_SIZE - 1));
+
+    DbgPrint("host_state.selector_es: [0x%02X]", GetEs());
+    DbgPrint("host_state.selector_cs: [0x%02X]", GetCs());
+    DbgPrint("host_state.selector_ss: [0x%02X]", GetSs());
+    DbgPrint("host_state.selector_ds: [0x%02X]", GetDs());
+    DbgPrint("host_state.selector_fs: [0x%02X]", GetFs());
+    DbgPrint("host_state.selector_gs: [0x%02X]", GetGs());
+
+    UINT64 sysenter_cs_msr = __readmsr(IA32_SYSENTER_CS);
+    DbgPrint("host_state.sysenter_cs_msr: [0x%02X]", sysenter_cs_msr);
+
+    UINT64 sysenter_eip_msr = __readmsr(IA32_SYSENTER_EIP);
+    DbgPrint("host_state.sysenter_eip_msr: [0x%02X]", sysenter_eip_msr);
+
+    UINT64 sysenter_esp_msr = __readmsr(IA32_SYSENTER_ESP);
+
+    DbgPrint("host_state.sysenter_esp_msr: [0x%02X]", sysenter_esp_msr);
+
+    DbgPrint("host_state.tr_base: [0x%02X]", GetSegmentBase(Gdtr->BaseAddress, GetTr()));
+
+    DbgPrint("vmxon_ptr: [0x%02X]", g_GuestState->VmxonRegion);
+
+    DbgPrint("==================CONTROLS==================");
+
+    UINT32 Control32Bit = 0;
+
+    __vmx_vmread(VMCS_CTRL_PIN_BASED_VM_EXECUTION_CONTROLS, &Control32Bit);
+    DbgPrint("[0x%08X] = VMCS_CTRL_PIN_BASED_VM_EXECUTION_CONTROLS", Control32Bit);
+
+    __vmx_vmread(VMCS_CTRL_PROCESSOR_BASED_VM_EXECUTION_CONTROLS, &Control32Bit);
+    DbgPrint("[0x%08X] = VMCS_CTRL_PROCESSOR_BASED_VM_EXECUTION_CONTROLS", Control32Bit);
+
+    __vmx_vmread(VMCS_CTRL_SECONDARY_PROCESSOR_BASED_VM_EXECUTION_CONTROLS, &Control32Bit);
+    DbgPrint("[0x%08X] = VMCS_CTRL_SECONDARY_PROCESSOR_BASED_VM_EXECUTION_CONTROLS", Control32Bit);
+
+    __vmx_vmread(VMCS_CTRL_EXCEPTION_BITMAP, &Control32Bit);
+    DbgPrint("[0x%08X] = VMCS_CTRL_EXCEPTION_BITMAP", Control32Bit);
+
+    __vmx_vmread(VMCS_CTRL_PAGEFAULT_ERROR_CODE_MASK, &Control32Bit);
+    DbgPrint("[0x%08X] = VMCS_CTRL_PAGEFAULT_ERROR_CODE_MASK", Control32Bit);
+
+    __vmx_vmread(VMCS_CTRL_PAGEFAULT_ERROR_CODE_MATCH, &Control32Bit);
+    DbgPrint("[0x%08X] = VMCS_CTRL_PAGEFAULT_ERROR_CODE_MATCH", Control32Bit);
+
+    __vmx_vmread(VMCS_CTRL_CR0_GUEST_HOST_MASK, &Control32Bit);
+    DbgPrint("[0x%08X] = VMCS_CTRL_CR0_GUEST_HOST_MASK", Control32Bit);
+
+    __vmx_vmread(VMCS_CTRL_CR4_GUEST_HOST_MASK, &Control32Bit);
+    DbgPrint("[0x%08X] = VMCS_CTRL_CR4_GUEST_HOST_MASK", Control32Bit);
+
+    __vmx_vmread(VMCS_CTRL_CR0_READ_SHADOW, &Control32Bit);
+    DbgPrint("[0x%08X] = VMCS_CTRL_CR0_READ_SHADOW", Control32Bit);
+
+    __vmx_vmread(VMCS_CTRL_CR4_READ_SHADOW, &Control32Bit);
+    DbgPrint("[0x%08X] = VMCS_CTRL_CR4_READ_SHADOW", Control32Bit);
+
+    __vmx_vmread(VMCS_CTRL_CR3_TARGET_COUNT, &Control32Bit);
+    DbgPrint("[0x%08X] = VMCS_CTRL_CR3_TARGET_COUNT", Control32Bit);
+
+    __vmx_vmread(VMCS_CTRL_CR3_TARGET_VALUE_0, &Control32Bit);
+    DbgPrint("[0x%08X] = VMCS_CTRL_CR3_TARGET_VALUE_0", Control32Bit);
+
+    __vmx_vmread(VMCS_CTRL_CR3_TARGET_VALUE_1, &Control32Bit);
+    DbgPrint("[0x%08X] = VMCS_CTRL_CR3_TARGET_VALUE_1", Control32Bit);
+
+    __vmx_vmread(VMCS_CTRL_CR3_TARGET_VALUE_2, &Control32Bit);
+    DbgPrint("[0x%08X] = VMCS_CTRL_CR3_TARGET_VALUE_2", Control32Bit);
+
+    __vmx_vmread(VMCS_CTRL_CR3_TARGET_VALUE_3, &Control32Bit);
+    DbgPrint("[0x%08X] = VMCS_CTRL_CR3_TARGET_VALUE_3", Control32Bit);
+
+    __vmx_vmread(VMCS_GUEST_RFLAGS, &Control32Bit);
+    DbgPrint("[0x%08X] = VMCS_GUEST_RFLAGS", Control32Bit);
+
+    DbgPrint("============================================\n");
 }
-// these functions are from 2015 lol...... hard to match these old names up with ia32.h
-//
-// SEGMENT_SELECTOR_64 looks like "SEGMENT_SELECTOR" ? what about the attributes though?
-// VMX_SEGMENT_ACCESS_RIGHTS looks like "SEGMENT_ATTRIBUTES" ?
-//
-BOOLEAN GetSegmentDescriptor(SEGMENT_SELECTOR* SegmentSelector, USHORT Selector, PUCHAR GdtBase)
-{
-    SEGMENT_DESCRIPTOR_64* SegDesc;
-
-    if (!SegmentSelector)
-        return FALSE;
-
-    if (Selector & 0x4)
-    {
-        return FALSE;
-    }
-
-    SegDesc = (SEGMENT_DESCRIPTOR_64*)((PUCHAR)GdtBase + (Selector & ~0x7));
-
-    SegmentSelector-> = Selector;
-    SegmentSelector->BASE = SegDesc->BASE0 | SegDesc->BASE1 << 16 | SegDesc->BASE2 << 24;
-    SegmentSelector->LIMIT = SegDesc->LIMIT0 | (SegDesc->LIMIT1ATTR1 & 0xf) << 16;
-    SegmentSelector->ATTRIBUTES.UCHARs = SegDesc->ATTR0 | (SegDesc->LIMIT1ATTR1 & 0xf0) << 4;
-
-    if (!(SegDesc->ATTR0 & 0x10))
-    { // LA_ACCESSED
-        ULONG64 Tmp;
-        // this is a TSS or callgate etc, save the base high part
-        Tmp = (*(PULONG64)((PUCHAR)SegDesc + 8));
-        SegmentSelector->BASE = (SegmentSelector->BASE & 0xffffffff) | (Tmp << 32);
-    }
-
-    if (SegmentSelector->ATTRIBUTES.Fields.G)
-    {
-        // 4096-bit granularity is enabled for this segment, scale the limit
-        SegmentSelector->LIMIT = (SegmentSelector->LIMIT << 12) + 0xfff;
-    }
-
-    return TRUE;
-}
-*/
