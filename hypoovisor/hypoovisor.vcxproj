@@ -125,17 +125,14 @@
     <ClCompile Include="vmcs.c" />
   </ItemGroup>
   <ItemGroup>
-    <MASM Include="AsmMain.asm">
-      <FileType>Document</FileType>
-    </MASM>
+    <MASM Include="asm\AsmMain.asm" />
+    <MASM Include="asm\VMXExitHandler.asm" />
     <MASM Include="asm\VMXState.asm" />
-    <MASM Include="vmx_exit_handler.asm" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="ept.h" />
     <ClInclude Include="hypoovisor.h" />
     <ClInclude Include="memory.h" />
-    <ClInclude Include="msr.h" />
     <ClInclude Include="processor.h" />
     <ClInclude Include="utils.h" />
     <ClInclude Include="vmcs.h" />

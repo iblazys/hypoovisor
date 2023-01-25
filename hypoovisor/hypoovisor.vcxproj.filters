@@ -62,9 +62,6 @@
     <ClInclude Include="processor.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="msr.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="ept.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -73,13 +70,13 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <MASM Include="AsmMain.asm">
-      <Filter>Source Files</Filter>
-    </MASM>
-    <MASM Include="vmx_exit_handler.asm">
-      <Filter>Source Files</Filter>
-    </MASM>
     <MASM Include="asm\VMXState.asm">
+      <Filter>Source Files\asm</Filter>
+    </MASM>
+    <MASM Include="asm\VMXExitHandler.asm">
+      <Filter>Source Files\asm</Filter>
+    </MASM>
+    <MASM Include="asm\AsmMain.asm">
       <Filter>Source Files\asm</Filter>
     </MASM>
   </ItemGroup>
