@@ -3,7 +3,10 @@
 #include <ia32.h>
 #include <intrin.h>
 
+#include "processor.h"
+
 // This file is essentially our VMM - Virtual Machine Manager
+// TODO: Clean up this file.
 
 #define ALIGNMENT_PAGE_SIZE 4096
 #define MAXIMUM_ADDRESS     0xffffffffffffffff
@@ -11,7 +14,7 @@
 #define VMXON_SIZE          4096
 #define VMM_STACK_SIZE      0x8000
 
-#define POOLTAG 0x48564653 // [H]yper[V]isor [F]rom [S]cratch (HVFS) - Change ME
+#define POOLTAG 0x48564653 // [H]yper[V]isor [F]rom [S]cratch (HVFS) - TODO: Change ME
 #define RPL_MASK    3
 
 // Hyper-V Shit
@@ -51,6 +54,12 @@ enum SEGREGS
     LDTR,
     TR
 };
+
+typedef enum
+{
+    REGION_VMCS,
+    REGION_VMXON
+} REGIONTYPE;
 
 typedef struct _GUEST_REGS
 {
@@ -110,20 +119,15 @@ BOOLEAN InitializeHV();
 BOOLEAN RunHV();
 BOOLEAN StopHV();
 
-// move these to memory.c ?
-BOOLEAN AllocateVmxonRegion(IN VIRTUAL_MACHINE_STATE* GuestState);
-BOOLEAN AllocateVmcsRegion(IN VIRTUAL_MACHINE_STATE* GuestState);
-
-// move to a vmx.c file ?
 BOOLEAN RunOnProcessor(ULONG ProcessorNumber, EPT_POINTER* EPTP, PFUNC Routine);
 BOOLEAN TerminateVMXOnProcessor(ULONG ProcessorNumber);
 VOID LaunchVm(int ProcessorID, EPT_POINTER* EPTP, PVOID GuestStack);
 VOID TerminateVmx();
-BOOLEAN MainVmexitHandler(PGUEST_REGS GuestRegs); // vmx_handler.c ?
 VOID ResumeToNextInstruction();
 VOID VmResumeInstruction();
 
-// handlers
+// handlers - vmxhandlers.c ?
+BOOLEAN MainVmexitHandler(PGUEST_REGS GuestRegs);
 BOOLEAN HandleCPUID(PGUEST_REGS state);
 VOID HandleControlRegisterAccess(PGUEST_REGS GuestState);
 VOID HandleMSRRead(PGUEST_REGS GuestRegs);

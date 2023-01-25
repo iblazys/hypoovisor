@@ -16,7 +16,6 @@ int g_ProcessorCounts;
 /// <returns></returns>
 BOOLEAN InitializeHV() 
 {
-    
 	DbgPrint("[hypoo] Hypoovisor initializing...");
 
     // TODO: Check EPT Support, g_VirtualGuestMemoryAddress gets its address from here.
@@ -44,12 +43,13 @@ BOOLEAN InitializeHV()
 
         DbgPrint("[hypoo] VMX Operation Enabled Successfully !");
 
-        if (!AllocateVmxonRegion(&g_GuestState[i]))
+        
+        if(!AllocateVMRegion(REGION_VMXON, &g_GuestState[i]))
             return FALSE;
 
-        if (!AllocateVmcsRegion(&g_GuestState[i]))
+        if (!AllocateVMRegion(REGION_VMCS, &g_GuestState[i]))
             return FALSE;
-
+            
         DbgPrint("[*] VMCS Region is allocated at  ===============> %llx", g_GuestState[i].VmcsRegion);
         DbgPrint("[*] VMXON Region is allocated at ===============> %llx", g_GuestState[i].VmxonRegion);
 
@@ -79,6 +79,10 @@ BOOLEAN RunHV()
     }
 }
 
+/// <summary>
+/// 
+/// </summary>
+/// <returns></returns>
 BOOLEAN StopHV() 
 {
     TerminateVmx();
@@ -86,6 +90,9 @@ BOOLEAN StopHV()
     return TRUE;
 }
 
+/// <summary>
+/// 
+/// </summary>
 BOOLEAN RunOnProcessor(ULONG ProcessorNumber, EPT_POINTER* EPTP, PFUNC Routine)
 {
     KIRQL OldIrql;
@@ -103,127 +110,8 @@ BOOLEAN RunOnProcessor(ULONG ProcessorNumber, EPT_POINTER* EPTP, PFUNC Routine)
     return TRUE;
 }
 
-// This code is the same as AllocateVmcsRegion, change it so we arent duplicating code
-BOOLEAN AllocateVmxonRegion(IN VIRTUAL_MACHINE_STATE* GuestState)
-{
-    // at IRQL > DISPATCH_LEVEL memory allocation routines don't work
-    if (KeGetCurrentIrql() > DISPATCH_LEVEL)
-        KeRaiseIrqlToDpcLevel();
-
-    PHYSICAL_ADDRESS PhysicalMax = { 0 };
-    PhysicalMax.QuadPart = MAXULONG64;
-
-    int    VMXONSize = 2 * VMXON_SIZE;
-    BYTE* Buffer = MmAllocateContiguousMemory(VMXONSize + ALIGNMENT_PAGE_SIZE, PhysicalMax); // Allocating a 4-KByte Contigous Memory region
-
-    PHYSICAL_ADDRESS Highest = { 0 }, Lowest = { 0 };
-    Highest.QuadPart = ~0;
-
-    // BYTE* Buffer = MmAllocateContiguousMemorySpecifyCache(VMXONSize + ALIGNMENT_PAGE_SIZE, Lowest, Highest, Lowest, MmNonCached);
-
-    if (Buffer == NULL)
-    {
-        DbgPrint("[*] Error : Couldn't Allocate Buffer for VMXON Region.");
-        return FALSE; // ntStatus = STATUS_INSUFFICIENT_RESOURCES;
-    }
-    UINT64 PhysicalBuffer = VirtualToPhysicalAddress(Buffer);
-
-    // zero-out memory
-    RtlSecureZeroMemory(Buffer, VMXONSize + ALIGNMENT_PAGE_SIZE);
-    UINT64 AlignedPhysicalBuffer = (BYTE*)((ULONG_PTR)(PhysicalBuffer + ALIGNMENT_PAGE_SIZE - 1) & ~(ALIGNMENT_PAGE_SIZE - 1));
-
-    UINT64 AlignedVirtualBuffer = (BYTE*)((ULONG_PTR)(Buffer + ALIGNMENT_PAGE_SIZE - 1) & ~(ALIGNMENT_PAGE_SIZE - 1));
-
-    DbgPrint("[*] Virtual allocated buffer for VMXON at %llx", Buffer);
-    DbgPrint("[*] Virtual aligned allocated buffer for VMXON at %llx", AlignedVirtualBuffer);
-    DbgPrint("[*] Aligned physical buffer allocated for VMXON at %llx", AlignedPhysicalBuffer);
-
-    // get IA32_VMX_BASIC_MSR RevisionId
-
-    IA32_VMX_BASIC_REGISTER basic = { 0 };
-
-    basic.AsUInt = GetHostMSR(IA32_VMX_BASIC);
-
-    DbgPrint("[*] MSR_IA32_VMX_BASIC (MSR 0x480) Revision Identifier %llx", basic.VmcsRevisionId);
-
-    // Changing Revision Identifier
-    *(UINT64*)AlignedVirtualBuffer = basic.VmcsRevisionId; // REVISION ID IS 1, DEFAULT IS 4 IN VmcsAuditor.exe
-
-    int Status = __vmx_on(&AlignedPhysicalBuffer);
-
-    if (Status)
-    {
-        DbgPrint("[*] VMXON failed with status %d\n", Status);
-        return FALSE;
-    }
-
-    GuestState->VmxonRegion = AlignedPhysicalBuffer;
-
-    return TRUE;
-}
-
-// This code is the same as AllocateVmxonRegion, change it so we arent duplicating code
-BOOLEAN AllocateVmcsRegion(IN VIRTUAL_MACHINE_STATE* GuestState)
-{
-    //
-    // at IRQL > DISPATCH_LEVEL memory allocation routines don't work
-    //
-    if (KeGetCurrentIrql() > DISPATCH_LEVEL)
-        KeRaiseIrqlToDpcLevel();
-
-    PHYSICAL_ADDRESS PhysicalMax = { 0 };
-    PhysicalMax.QuadPart = MAXULONG64;
-
-    int    VMCSSize = 2 * VMCS_SIZE;
-    BYTE* Buffer = MmAllocateContiguousMemory(VMCSSize + ALIGNMENT_PAGE_SIZE, PhysicalMax); // Allocating a 4-KByte Contigous Memory region
-
-    PHYSICAL_ADDRESS Highest = { 0 }, Lowest = { 0 };
-    Highest.QuadPart = ~0;
-
-    // BYTE* Buffer = MmAllocateContiguousMemorySpecifyCache(VMXONSize + ALIGNMENT_PAGE_SIZE, Lowest, Highest, Lowest, MmNonCached);
-
-    UINT64 PhysicalBuffer = VirtualToPhysicalAddress(Buffer);
-    if (Buffer == NULL)
-    {
-        DbgPrint("[*] Error : Couldn't Allocate Buffer for VMCS Region.");
-        return FALSE; // ntStatus = STATUS_INSUFFICIENT_RESOURCES;
-    }
-    // zero-out memory
-    RtlSecureZeroMemory(Buffer, VMCSSize + ALIGNMENT_PAGE_SIZE);
-    UINT64 AlignedPhysicalBuffer = (BYTE*)((ULONG_PTR)(PhysicalBuffer + ALIGNMENT_PAGE_SIZE - 1) & ~(ALIGNMENT_PAGE_SIZE - 1));
-
-    UINT64 AlignedVirtualBuffer = (BYTE*)((ULONG_PTR)(Buffer + ALIGNMENT_PAGE_SIZE - 1) & ~(ALIGNMENT_PAGE_SIZE - 1));
-
-    DbgPrint("[*] Virtual allocated buffer for VMCS at %llx", Buffer);
-    DbgPrint("[*] Virtual aligned allocated buffer for VMCS at %llx", AlignedVirtualBuffer);
-    DbgPrint("[*] Aligned physical buffer allocated for VMCS at %llx", AlignedPhysicalBuffer);
-
-    // get IA32_VMX_BASIC_MSR RevisionId
-
-    IA32_VMX_BASIC_REGISTER basic = { 0 };
-
-    basic.AsUInt = __readmsr(IA32_VMX_BASIC);
-
-    DbgPrint("[*] MSR_IA32_VMX_BASIC (MSR 0x480) Revision Identifier %llx", basic.VmcsRevisionId);
-
-    // Changing Revision Identifier
-    *(UINT64*)AlignedVirtualBuffer = basic.VmcsRevisionId;
-
-    int Status = __vmx_vmptrld(&AlignedPhysicalBuffer);
-
-    if (Status)
-    {
-        DbgPrint("[hypoo] VMCS failed with status %d\n", Status);
-        return FALSE;
-    }
-
-    GuestState->VmcsRegion = AlignedPhysicalBuffer;
-
-    return TRUE;
-}
-
 /// <summary>
-/// 
+/// Assembly function VMXSaveState calls this function.
 /// </summary>
 VOID LaunchVm(int ProcessorID, EPT_POINTER* EPTP, PVOID GuestStack)
 {
@@ -246,7 +134,8 @@ VOID LaunchVm(int ProcessorID, EPT_POINTER* EPTP, PVOID GuestStack)
         goto ErrorReturn;
     }
 
-    SetupVmcs(&g_GuestState[ProcessorID], EPTP, GuestStack); // add guest stack
+    // Setup the VMCS data
+    SetupVmcs(&g_GuestState[ProcessorID], EPTP, GuestStack);
 
     DbgPrint("[hypoo] Executing VMLAUNCH");
 
@@ -288,7 +177,7 @@ VOID TerminateVmx()
         MmFreeContiguousMemory(PhysicalToVirtualAddress(g_GuestState[i].VmxonRegion));
         MmFreeContiguousMemory(PhysicalToVirtualAddress(g_GuestState[i].VmcsRegion));
         ExFreePoolWithTag(g_GuestState[i].VmmStack, POOLTAG);
-        ExFreePoolWithTag(g_GuestState[i].MsrBitmap, POOLTAG); // bsod here?
+        ExFreePoolWithTag(g_GuestState[i].MsrBitmap, POOLTAG);
     }
 
     DbgPrint("[*] VMX terminated successfully. \n");
@@ -358,12 +247,6 @@ BOOLEAN MainVmexitHandler(PGUEST_REGS GuestRegs)
     }
     case VMX_EXIT_REASON_EXECUTE_HLT:
     {
-        // TODO: Remove this.
-        DbgPrint("[hypoo][VMEXIT] Execution of HLT detected... \n");
-
-        // that's enough for now
-        DbgBreakPoint();
-
         break;
     }
     case VMX_EXIT_REASON_EXCEPTION_OR_NMI:

@@ -1,19 +1,27 @@
 #pragma once
-#include <ntddk.h>
 #include "hypoovisor.h"
+#include <wdf.h>
+
+/// <summary>
+/// Allocate a VMCS or VMXON region depending on the provided type.
+/// </summary>
+/// <param name="Type"></param>
+/// <param name="GuestState"></param>
+/// <returns></returns>
+BOOLEAN AllocateVMRegion(REGIONTYPE Type, IN VIRTUAL_MACHINE_STATE* GuestState);
 
 /// <summary>
 /// Allocates the VMM stack and zero the memory.
 /// </summary>
 /// <param name="ProcessorID"></param>
-/// <returns></returns>
+/// <returns>the vmm stack address</returns>
 UINT64 AllocateVMMStack();
 
 /// <summary>
 /// Allocates the MSR bitmap and zero the memory.
 /// </summary>
 /// <param name="ProcessorID"></param>
-/// <returns></returns>
+/// <returns>the msr bitmap address</returns>
 UINT64 AllocateMSRBitmap();
 
 /// <summary>
@@ -29,6 +37,4 @@ UINT64 VirtualToPhysicalAddress(void* virtualAddress);
 /// <param name="physicalAddress">the physical address</param>
 /// <returns>the virtual address</returns>
 UINT64 PhysicalToVirtualAddress(UINT64 physicalAddress);
-
-BOOLEAN AllocateVmxonRegion(IN VIRTUAL_MACHINE_STATE* GuestState);
 
