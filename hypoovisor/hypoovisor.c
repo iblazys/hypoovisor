@@ -49,7 +49,7 @@ BOOLEAN InitializeHV()
 
         if (!AllocateVMRegion(REGION_VMCS, &g_GuestState[i]))
             return FALSE;
-            
+
         DbgPrint("[*] VMCS Region is allocated at  ===============> %llx", g_GuestState[i].VmcsRegion);
         DbgPrint("[*] VMXON Region is allocated at ===============> %llx", g_GuestState[i].VmxonRegion);
 
