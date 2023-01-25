@@ -3,6 +3,8 @@
 #include <ia32.h>
 #include <intrin.h>
 
+#include "processor.h"
+
 // This file is essentially our VMM - Virtual Machine Manager
 
 #define ALIGNMENT_PAGE_SIZE 4096
@@ -51,6 +53,12 @@ enum SEGREGS
     LDTR,
     TR
 };
+
+typedef enum
+{
+    REGION_VMCS,
+    REGION_VMXON
+} REGIONTYPE;
 
 typedef struct _GUEST_REGS
 {

@@ -16,7 +16,6 @@ int g_ProcessorCounts;
 /// <returns></returns>
 BOOLEAN InitializeHV() 
 {
-    
 	DbgPrint("[hypoo] Hypoovisor initializing...");
 
     // TODO: Check EPT Support, g_VirtualGuestMemoryAddress gets its address from here.
@@ -44,11 +43,23 @@ BOOLEAN InitializeHV()
 
         DbgPrint("[hypoo] VMX Operation Enabled Successfully !");
 
+        
+        if(!AllocateVMRegion(REGION_VMXON, &g_GuestState[i]))
+            return FALSE;
+
+        if (!AllocateVMRegion(REGION_VMCS, &g_GuestState[i]))
+            return FALSE;
+            
+
+        
+        /*
         if (!AllocateVmxonRegion(&g_GuestState[i]))
             return FALSE;
 
         if (!AllocateVmcsRegion(&g_GuestState[i]))
             return FALSE;
+            */
+            
 
         DbgPrint("[*] VMCS Region is allocated at  ===============> %llx", g_GuestState[i].VmcsRegion);
         DbgPrint("[*] VMXON Region is allocated at ===============> %llx", g_GuestState[i].VmxonRegion);

@@ -1,6 +1,6 @@
 #pragma once
-#include <ntddk.h>
 #include "hypoovisor.h"
+#include <wdf.h>
 
 /// <summary>
 /// Allocates the VMM stack and zero the memory.
@@ -30,5 +30,5 @@ UINT64 VirtualToPhysicalAddress(void* virtualAddress);
 /// <returns>the virtual address</returns>
 UINT64 PhysicalToVirtualAddress(UINT64 physicalAddress);
 
-BOOLEAN AllocateVmxonRegion(IN VIRTUAL_MACHINE_STATE* GuestState);
+BOOLEAN AllocateVMRegion(REGIONTYPE Type, IN VIRTUAL_MACHINE_STATE* GuestState);
 
