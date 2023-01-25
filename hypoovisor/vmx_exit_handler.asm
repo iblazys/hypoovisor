@@ -1,7 +1,10 @@
 PUBLIC AsmVmexitHandler
+PUBLIC AsmVmxOffHandler
 
 EXTERN MainVmexitHandler:PROC
 EXTERN VmResumeInstruction:PROC
+EXTERN g_GuestRIP:QWORD
+EXTERN g_GuestRSP:QWORD
 
 .code _text
 
@@ -24,12 +27,19 @@ AsmVmexitHandler PROC
     PUSH RCX
     PUSH RAX	
 
-	MOV RCX, RSP		; GuestRegs
-	SUB	RSP, 28h
+	MOV RCX, RSP		; Fast CALL argument to PGUEST_REGS
+	SUB	RSP, 28h		; Free some space for Shadow Section
 
 	CALL	MainVmexitHandler
-	ADD	RSP, 28h	
 
+	ADD	RSP, 28h		; Restore the state
+
+	; Check whether we have to turn off VMX or Not (the result is in RAX)
+
+	CMP	AL, 1
+	JE		AsmVmxOffHandler
+
+	; Restore the state
 	POP RAX
     POP RCX
     POP RDX
@@ -48,9 +58,41 @@ AsmVmexitHandler PROC
     POP R15
 
 	SUB RSP, 0100h ; to avoid error in future functions
-	
-    JMP VmResumeInstruction
+
+	JMP VmResumeInstruction
 	
 AsmVmexitHandler ENDP
+
+AsmVmxOffHandler PROC
+
+	; Turn VMXOFF
+	VMXOFF
+
+	; Restore the state
+
+	POP RAX
+    POP RCX
+    POP RDX
+    POP RBX
+    POP RBP		; RSP
+    POP RBP
+    POP RSI
+    POP RDI 
+    POP R8
+    POP R9
+    POP R10
+    POP R11
+    POP R12
+    POP R13
+    POP R14
+    POP R15
+
+	; Set guest RIP and RSP
+
+	MOV		RSP, g_GuestRSP
+
+	JMP		g_GuestRIP
+
+AsmVmxOffHandler ENDP
 
 END

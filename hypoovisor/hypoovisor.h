@@ -12,12 +12,29 @@
 #define VMM_STACK_SIZE      0x8000
 
 #define POOLTAG 0x48564653 // [H]yper[V]isor [F]rom [S]cratch (HVFS) - Change ME
+#define RPL_MASK    3
+
+// Hyper-V Shit
+#define HYPERV_CPUID_VENDOR_AND_MAX_FUNCTIONS 0x40000000
+#define HYPERV_CPUID_INTERFACE                0x40000001
+#define HYPERV_CPUID_VERSION                  0x40000002
+#define HYPERV_CPUID_FEATURES                 0x40000003
+#define HYPERV_CPUID_ENLIGHTMENT_INFO         0x40000004
+#define HYPERV_CPUID_IMPLEMENT_LIMITS         0x40000005
+
+#define HYPERV_HYPERVISOR_PRESENT_BIT 0x80000000
+#define HYPERV_CPUID_MIN              0x40000005
+#define HYPERV_CPUID_MAX              0x4000ffff
+
+// System and User Ring Definitions
+#define DPL_USER                3
+#define DPL_SYSTEM              0
 
 typedef struct _VIRTUAL_MACHINE_STATE
 {
     UINT64 VmxonRegion; // VMXON region
     UINT64 VmcsRegion;  // VMCS region
-    UINT64 Eptp;              // Extended-Page-Table Pointer
+    EPT_POINTER* Eptp;              // Extended-Page-Table Pointer
     UINT64 VmmStack;          // Stack for VMM in VM-Exit State
     UINT64 MsrBitmap;         // MSR Bitmap Virtual Address
     UINT64 MsrBitmapPhysical; // MSR Bitmap Physical Address
@@ -55,19 +72,25 @@ typedef struct _GUEST_REGS
     ULONG64 r15;
 } GUEST_REGS, * PGUEST_REGS;
 
-UINT64 g_StackPointerForReturning;
-UINT64 g_BasePointerForReturning;
+typedef void (*PFUNC)(IN ULONG ProcessorID, IN EPT_POINTER* EPTP);
+
+UINT64 g_GuestRSP;
+UINT64 g_GuestRIP;
 
 extern VIRTUAL_MACHINE_STATE *g_GuestState;
 extern UINT64 g_VirtualGuestMemoryAddress;
 extern int g_ProcessorCounts;
 
-
 // ASM Functions
 extern void inline AsmEnableVmxOperation(void);
 extern void inline AsmVmxoffAndRestoreState();
 extern void inline AsmSaveStateForVmxoff();
+extern void inline VMXSaveState();
+extern void inline VMXRestoreState();
 extern void AsmVmexitHandler();
+
+extern ULONG64 MSRRead(ULONG32 reg);
+extern void MSRWrite(ULONG32 reg, ULONG64 MsrValue);
 
 // shouldnt these be extern??
 USHORT GetCs(VOID);
@@ -92,10 +115,18 @@ BOOLEAN AllocateVmxonRegion(IN VIRTUAL_MACHINE_STATE* GuestState);
 BOOLEAN AllocateVmcsRegion(IN VIRTUAL_MACHINE_STATE* GuestState);
 
 // move to a vmx.c file ?
-VOID LaunchVm(int ProcessorID, EPT_POINTER* EPTP);
+BOOLEAN RunOnProcessor(ULONG ProcessorNumber, EPT_POINTER* EPTP, PFUNC Routine);
+BOOLEAN TerminateVMXOnProcessor(ULONG ProcessorNumber);
+VOID LaunchVm(int ProcessorID, EPT_POINTER* EPTP, PVOID GuestStack);
 VOID TerminateVmx();
-VOID MainVmexitHandler(PGUEST_REGS GuestRegs);
+BOOLEAN MainVmexitHandler(PGUEST_REGS GuestRegs); // vmx_handler.c ?
 VOID ResumeToNextInstruction();
 VOID VmResumeInstruction();
+
+// handlers
+BOOLEAN HandleCPUID(PGUEST_REGS state);
+VOID HandleControlRegisterAccess(PGUEST_REGS GuestState);
+VOID HandleMSRRead(PGUEST_REGS GuestRegs);
+VOID HandleMSRWrite(PGUEST_REGS GuestRegs);
 
 

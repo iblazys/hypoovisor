@@ -2,6 +2,7 @@
 #include "hypoovisor.h"
 
 // wont need this soon
+// IA32_VMX_TRUE_CTLS_REGISTER ?
 typedef union _MSR
 {
     struct
@@ -27,11 +28,11 @@ UINT64 VmptrstInstruction();
 BOOLEAN ClearVmcsState(VIRTUAL_MACHINE_STATE* GuestState);
 BOOLEAN LoadVmcs(VIRTUAL_MACHINE_STATE* GuestState);
 
-BOOLEAN SetupVmcs(VIRTUAL_MACHINE_STATE* GuestState, EPT_POINTER* EPTP); // rewriting
+BOOLEAN SetupVmcs(VIRTUAL_MACHINE_STATE* GuestState, EPT_POINTER* EPTP, PVOID GuestStack);
 
 // remove data in namings perhaps
 VOID SetupVmcsControlData();
-VOID SetupVmcsGuestData(SEGMENT_DESCRIPTOR_REGISTER_64* Gdtr, SEGMENT_DESCRIPTOR_REGISTER_64* Idtr);
+VOID SetupVmcsGuestData(SEGMENT_DESCRIPTOR_REGISTER_64* Gdtr, SEGMENT_DESCRIPTOR_REGISTER_64* Idtr, PVOID GuestStack);
 VOID SetupVmcsHostData(SEGMENT_DESCRIPTOR_REGISTER_64* Gdtr, SEGMENT_DESCRIPTOR_REGISTER_64* Idtr);
 
 VOID SetEntryControls(IA32_VMX_ENTRY_CTLS_REGISTER* EntryControls);

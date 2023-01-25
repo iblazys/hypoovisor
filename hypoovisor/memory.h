@@ -3,6 +3,20 @@
 #include "hypoovisor.h"
 
 /// <summary>
+/// Allocates the VMM stack and zero the memory.
+/// </summary>
+/// <param name="ProcessorID"></param>
+/// <returns></returns>
+UINT64 AllocateVMMStack();
+
+/// <summary>
+/// Allocates the MSR bitmap and zero the memory.
+/// </summary>
+/// <param name="ProcessorID"></param>
+/// <returns></returns>
+UINT64 AllocateMSRBitmap();
+
+/// <summary>
 /// Converts a virtual address to a physical address...
 /// </summary>
 /// <param name="virtualAddress">the virtual address</param>

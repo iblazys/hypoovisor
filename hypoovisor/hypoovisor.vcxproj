@@ -128,6 +128,7 @@
     <MASM Include="AsmMain.asm">
       <FileType>Document</FileType>
     </MASM>
+    <MASM Include="asm\VMXState.asm" />
     <MASM Include="vmx_exit_handler.asm" />
   </ItemGroup>
   <ItemGroup>

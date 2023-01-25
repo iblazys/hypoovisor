@@ -1,6 +1,4 @@
 PUBLIC AsmEnableVmxOperation
-PUBLIC AsmVmxoffAndRestoreState
-PUBLIC AsmSaveStateForVmxoff
 
 PUBLIC GetCs
 PUBLIC GetDs
@@ -17,8 +15,8 @@ PUBLIC GetIdtLimit
 PUBLIC GetRflags
 PUBLIC __load_ar
 
-EXTERN g_StackPointerForReturning:QWORD
-EXTERN g_BasePointerForReturning:QWORD
+PUBLIC MSRRead
+PUBLIC MSRWrite
 
 .CODE _text
 
@@ -37,50 +35,6 @@ AsmEnableVmxOperation PROC PUBLIC
 	RET
 
 AsmEnableVmxOperation ENDP
-
-AsmVmxoffAndRestoreState PROC PUBLIC
-
-	; turn off vmx before returning, but this is already done in TerminateVMX
-	; so if we call vmxoff when it is already turned off we will get a BSOD.
-	;
-	; TODO: Create dedicated SaveState and RestoreState functions, we dont need to turn VMX off here.
-	; And if we ever do need to turn VMX off during an error, we will do it somewhere else.
-	
-	;VMXOFF  
-	
-	MOV RSP, g_StackPointerForReturning
-	MOV RBP, g_BasePointerForReturning
-	
-	; add 8 bytes to make RSP a correct return point
-	ADD RSP, 8
-	
-	; return True
-
-	XOR RAX, RAX
-	MOV RAX, 1
-	
-	; return section
-
-	; We need to emulate the return section of the function that calls vmlaunch
-	; because vmlaunch acts as a return itself.
-	
-	ADD     RSP, 50h ;check what IDA / WinDBG says this is
-	POP     RDI
-	
-	RET
-	
-AsmVmxoffAndRestoreState ENDP 
-
-
-AsmSaveStateForVmxoff PROC PUBLIC
-
-	MOV g_StackPointerForReturning, RSP
-	MOV g_BasePointerForReturning, RBP
-
-	RET
-
-AsmSaveStateForVmxoff ENDP 
-
 
 GetGdtBase PROC
 
@@ -207,5 +161,30 @@ __load_ar proc
 no_error:
         ret
 __load_ar endp
+
+;------------------------------------------------------------------------
+
+MSRRead PROC
+
+	RDMSR				; MSR[ECX] --> EDX:EAX
+	SHL		RDX, 32
+	OR		RAX, RDX
+
+	RET
+
+MSRRead ENDP
+
+;------------------------------------------------------------------------
+
+MSRWrite PROC
+
+	MOV		RAX, RDX
+	SHR		RDX, 32
+	WRMSR
+	RET
+
+MSRWrite ENDP
+
+;------------------------------------------------------------------------
 
 END

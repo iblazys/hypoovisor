@@ -17,6 +17,9 @@
       <UniqueIdentifier>{8E41214B-6785-4CFE-B992-037D68949A14}</UniqueIdentifier>
       <Extensions>inf;inv;inx;mof;mc;</Extensions>
     </Filter>
+    <Filter Include="Source Files\asm">
+      <UniqueIdentifier>{b1c7a13c-a4f5-43be-ba64-a2b8622360d2}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <Inf Include="hypoovisor.inf">
@@ -75,6 +78,9 @@
     </MASM>
     <MASM Include="vmx_exit_handler.asm">
       <Filter>Source Files</Filter>
+    </MASM>
+    <MASM Include="asm\VMXState.asm">
+      <Filter>Source Files\asm</Filter>
     </MASM>
   </ItemGroup>
 </Project>

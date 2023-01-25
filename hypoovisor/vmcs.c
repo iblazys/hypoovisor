@@ -90,7 +90,7 @@ VOID SetupVmcsHostData(SEGMENT_DESCRIPTOR_REGISTER_64* Gdtr, SEGMENT_DESCRIPTOR_
     */
 }
 
-VOID SetupVmcsGuestData(SEGMENT_DESCRIPTOR_REGISTER_64* Gdtr, SEGMENT_DESCRIPTOR_REGISTER_64* Idtr)
+VOID SetupVmcsGuestData(SEGMENT_DESCRIPTOR_REGISTER_64* Gdtr, SEGMENT_DESCRIPTOR_REGISTER_64* Idtr, PVOID GuestStack)
 {
     DbgPrint("[hypoo] Setting up VMCS guest data");
 
@@ -172,8 +172,8 @@ VOID SetupVmcsGuestData(SEGMENT_DESCRIPTOR_REGISTER_64* Gdtr, SEGMENT_DESCRIPTOR
     __vmx_vmwrite(VMCS_GUEST_SYSENTER_EIP, __readmsr(IA32_SYSENTER_EIP));
     __vmx_vmwrite(VMCS_GUEST_SYSENTER_ESP, __readmsr(IA32_SYSENTER_ESP));
 
-    __vmx_vmwrite(VMCS_GUEST_RSP, (ULONG64)g_VirtualGuestMemoryAddress);
-    __vmx_vmwrite(VMCS_GUEST_RIP, (ULONG64)g_VirtualGuestMemoryAddress);
+    __vmx_vmwrite(VMCS_GUEST_RSP, (ULONG64)GuestStack);
+    __vmx_vmwrite(VMCS_GUEST_RIP, (ULONG64)VMXRestoreState);
 }
 
 /// <summary>
@@ -214,7 +214,7 @@ VOID SetupVmcsControlData()
     // ------------ Procbased Controls ------------
 
     ProcbasedControls.ActivateSecondaryControls = TRUE;
-    ProcbasedControls.HltExiting = TRUE; // Bsod when true
+    ProcbasedControls.UseMsrBitmaps = TRUE;
 
     SetProcbasedControls(&ProcbasedControls);
 
@@ -223,6 +223,8 @@ VOID SetupVmcsControlData()
     // ------------ Secondary Procbased Controls ------------
 
     SecondaryControls.EnableRdtscp = TRUE;
+    SecondaryControls.EnableInvpcid = TRUE;
+    SecondaryControls.EnableXsaves = TRUE;
 
     SetSecondaryControls(&SecondaryControls);
 
@@ -241,11 +243,16 @@ VOID SetupVmcsControlData()
 
     __vmx_vmwrite(VMCS_CTRL_TSC_OFFSET, 0);
 
+    /*
+    * An execution of MOV to CR3 in VMX non-root operation does not cause a VM exit if its source operand matches one of these values
+    */
     __vmx_vmwrite(VMCS_CTRL_CR3_TARGET_COUNT, 0);
     __vmx_vmwrite(VMCS_CTRL_CR3_TARGET_VALUE_0, 0);
     __vmx_vmwrite(VMCS_CTRL_CR3_TARGET_VALUE_1, 0);
     __vmx_vmwrite(VMCS_CTRL_CR3_TARGET_VALUE_2, 0);
     __vmx_vmwrite(VMCS_CTRL_CR3_TARGET_VALUE_3, 0);
+
+    __vmx_vmwrite(VMCS_CTRL_MSR_BITMAP_ADDRESS, g_GuestState->MsrBitmapPhysical);
 
 }
 
@@ -338,14 +345,14 @@ IA32_VMX_BASIC_REGISTER GetBasicControls()
     return BasicControls;
 }
 
-BOOLEAN SetupVmcs(VIRTUAL_MACHINE_STATE* GuestState, EPT_POINTER* EPTP) 
+BOOLEAN SetupVmcs(VIRTUAL_MACHINE_STATE* GuestState, EPT_POINTER* EPTP, PVOID GuestStack) 
 {
     SEGMENT_DESCRIPTOR_REGISTER_64*  Gdtr = { 0 };
     SEGMENT_DESCRIPTOR_REGISTER_64*  Idtr = { 0 };
 
     SetupVmcsControlData();
 
-    SetupVmcsGuestData(&Gdtr, &Idtr);
+    SetupVmcsGuestData(&Gdtr, &Idtr, GuestStack);
     SetupVmcsHostData(&Gdtr, &Idtr);
     
     DbgPrint("[hypoo] VMCS was setup successfully (i think lul)");
