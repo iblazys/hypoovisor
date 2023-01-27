@@ -1,4 +1,7 @@
 #include "memory.h"
+#include "shared.h"
+
+#include <wdf.h>
 
 UINT64 AllocateVMMStack()
 {
@@ -88,20 +91,23 @@ BOOLEAN AllocateVMRegion(REGIONTYPE Type, IN VIRTUAL_MACHINE_STATE* GuestState)
             return FALSE;
         }
 
-        GuestState->VmxonRegion = AlignedPhysicalBuffer;
+        GuestState->VmxonRegionPhysicalAddress = AlignedPhysicalBuffer;
+        GuestState->VmxonRegionVirtualAddress = Buffer;
     }
     else
     {
-        // If LoadVmcs() does this then why are we doing it here or vice versa??
+        /*
         int Status = __vmx_vmptrld(&AlignedPhysicalBuffer);
 
         if (Status)
         {
-            DbgPrint("[hypoo] VMCS failed with status %d\n", Status);
+            DbgPrint("[hypoo] VMPTRLD failed with status %d\n", Status);
             return FALSE;
         }
+        */
 
-        GuestState->VmcsRegion = AlignedPhysicalBuffer;
+        GuestState->VmcsRegionPhysicalAddress = AlignedPhysicalBuffer;
+        GuestState->VmcsRegionVirtualAddress = Buffer;
     }
 
     return TRUE;

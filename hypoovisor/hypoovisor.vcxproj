@@ -118,24 +118,32 @@
   <ItemGroup>
     <ClCompile Include="driver.c" />
     <ClCompile Include="ept.c" />
+    <ClCompile Include="hvroutines.c" />
     <ClCompile Include="hypoovisor.c" />
     <ClCompile Include="memory.c" />
     <ClCompile Include="processor.c" />
     <ClCompile Include="utils.c" />
+    <ClCompile Include="vmcall.c" />
     <ClCompile Include="vmcs.c" />
   </ItemGroup>
   <ItemGroup>
+    <MASM Include="AsmInvept.asm" />
     <MASM Include="asm\AsmMain.asm" />
     <MASM Include="asm\VMXExitHandler.asm" />
     <MASM Include="asm\VMXState.asm" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="dpc.h" />
     <ClInclude Include="ept.h" />
+    <ClInclude Include="hvroutines.h" />
     <ClInclude Include="hypoovisor.h" />
     <ClInclude Include="memory.h" />
     <ClInclude Include="processor.h" />
+    <ClInclude Include="shared.h" />
     <ClInclude Include="utils.h" />
+    <ClInclude Include="vmcall.h" />
     <ClInclude Include="vmcs.h" />
+    <ClInclude Include="vmstate.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

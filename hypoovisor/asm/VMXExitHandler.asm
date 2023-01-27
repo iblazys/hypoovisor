@@ -3,96 +3,124 @@ PUBLIC AsmVmxOffHandler
 
 EXTERN MainVmexitHandler:PROC
 EXTERN VmResumeInstruction:PROC
-EXTERN g_GuestRIP:QWORD
-EXTERN g_GuestRSP:QWORD
+
+EXTERN g_GuestRIP:QWORD ;delete
+EXTERN g_GuestRSP:QWORD ;delete
+
+EXTERN HvReturnStackPointerForVmxoff:PROC
+EXTERN HvReturnInstructionPointerForVmxoff:PROC
 
 .code _text
 
 AsmVmexitHandler PROC
+    
+    push 0  ; we might be in an unaligned stack state, so the memory before stack might cause 
+            ; irql less or equal as it doesn't exist, so we just put some extra space avoid
+            ; these kind of erros
 
-    PUSH R15
-    PUSH R14
-    PUSH R13
-    PUSH R12
-    PUSH R11
-    PUSH R10
-    PUSH R9
-    PUSH R8        
-    PUSH RDI
-    PUSH RSI
-    PUSH RBP
-    PUSH RBP	; RSP
-    PUSH RBX
-    PUSH RDX
-    PUSH RCX
-    PUSH RAX	
+    pushfq
 
-	MOV RCX, RSP		; Fast CALL argument to PGUEST_REGS
-	SUB	RSP, 28h		; Free some space for Shadow Section
+    push r15
+    push r14
+    push r13
+    push r12
+    push r11
+    push r10
+    push r9
+    push r8        
+    push rdi
+    push rsi
+    push rbp
+    push rbp	; rsp
+    push rbx
+    push rdx
+    push rcx
+    push rax	
 
-	CALL	MainVmexitHandler
+	mov rcx, rsp		; Fast call argument to PGUEST_REGS
+	sub	rsp, 28h		; Free some space for Shadow Section
+	call	MainVmexitHandler
+	add	rsp, 28h		; Restore the state
 
-	ADD	RSP, 28h		; Restore the state
+	cmp	al, 1	; Check whether we have to turn off VMX or Not (the result is in RAX)
+	je		AsmVmxoffHandler
 
-	; Check whether we have to turn off VMX or Not (the result is in RAX)
+	RestoreState:
+	pop rax
+    pop rcx
+    pop rdx
+    pop rbx
+    pop rbp		; rsp
+    pop rbp
+    pop rsi
+    pop rdi 
+    pop r8
+    pop r9
+    pop r10
+    pop r11
+    pop r12
+    pop r13
+    pop r14
+    pop r15
 
-	CMP	AL, 1
-	JE		AsmVmxOffHandler
+    popfq
 
-	; Restore the state
-	POP RAX
-    POP RCX
-    POP RDX
-    POP RBX
-    POP RBP		; RSP
-    POP RBP
-    POP RSI
-    POP RDI 
-    POP R8
-    POP R9
-    POP R10
-    POP R11
-    POP R12
-    POP R13
-    POP R14
-    POP R15
+	sub rsp, 0100h      ; to avoid error in future functions
+	jmp VmResumeInstruction
 
-	SUB RSP, 0100h ; to avoid error in future functions
-
-	JMP VmResumeInstruction
-	
 AsmVmexitHandler ENDP
 
-AsmVmxOffHandler PROC
+AsmVmxoffHandler PROC
+    
+    sub rsp, 020h       ; shadow space
+    call HvReturnStackPointerForVmxoff
+    add rsp, 020h       ; remove for shadow space
 
-	; Turn VMXOFF
-	VMXOFF
+    mov [rsp+088h], rax  ; now, rax contains rsp
 
-	; Restore the state
+    sub rsp, 020h       ; shadow space
+    call HvReturnInstructionPointerForVmxoff
+    add rsp, 020h       ; remove for shadow space
 
-	POP RAX
-    POP RCX
-    POP RDX
-    POP RBX
-    POP RBP		; RSP
-    POP RBP
-    POP RSI
-    POP RDI 
-    POP R8
-    POP R9
-    POP R10
-    POP R11
-    POP R12
-    POP R13
-    POP R14
-    POP R15
+    mov rdx, rsp        ; save current rsp
 
-	; Set guest RIP and RSP
+    mov rbx, [rsp+088h] ; read rsp again
 
-	MOV		RSP, g_GuestRSP
+    mov rsp, rbx
 
-	JMP		g_GuestRIP
+    push rax            ; push the return address as we changed the stack, we push
+                        ; it to the new stack
 
-AsmVmxOffHandler ENDP
+    mov rsp, rdx        ; restore previous rsp
+                        
+    sub rbx,08h         ; we push sth, so we have to add (sub) +8 from previous stack
+                        ; also rbx already contains the rsp
+    mov [rsp+088h], rbx ; move the new pointer to the current stack
+
+	RestoreState:
+
+	pop rax
+    pop rcx
+    pop rdx
+    pop rbx
+    pop rbp		         ; rsp
+    pop rbp
+    pop rsi
+    pop rdi 
+    pop r8
+    pop r9
+    pop r10
+    pop r11
+    pop r12
+    pop r13
+    pop r14
+    pop r15
+
+    popfq
+
+	pop		rsp     ; restore rsp
+	ret             ; jump back to where we called Vmcall
+
+AsmVmxoffHandler ENDP
 
 END

@@ -1,6 +1,7 @@
-#pragma once
+#ifndef MEMORY_H
+#define MEMORY_H
+
 #include "hypoovisor.h"
-#include <wdf.h>
 
 /// <summary>
 /// Allocate a VMCS or VMXON region depending on the provided type.
@@ -37,3 +38,5 @@ UINT64 VirtualToPhysicalAddress(void* virtualAddress);
 /// <param name="physicalAddress">the physical address</param>
 /// <returns>the virtual address</returns>
 UINT64 PhysicalToVirtualAddress(UINT64 physicalAddress);
+
+#endif

@@ -1,4 +1,8 @@
+
 #include "vmcs.h"
+#include "ept.h"
+#include "vmstate.h"
+
 #pragma warning(disable : 6328)
 
 /// <summary>
@@ -22,7 +26,7 @@ UINT64 VmptrstInstruction()
 BOOLEAN ClearVmcsState(VIRTUAL_MACHINE_STATE* GuestState)
 {
     // Clear the state of the VMCS to inactive
-    int status = __vmx_vmclear(&GuestState->VmcsRegion);
+    int status = __vmx_vmclear(&GuestState->VmcsRegionPhysicalAddress);
 
     DbgPrint("[*] VMCS VMCLEAR Status is : %d\n", status);
     if (status)
@@ -41,7 +45,7 @@ BOOLEAN ClearVmcsState(VIRTUAL_MACHINE_STATE* GuestState)
 /// </summary>
 BOOLEAN LoadVmcs(VIRTUAL_MACHINE_STATE* GuestState)
 {
-    int status = __vmx_vmptrld(&GuestState->VmcsRegion);
+    int status = __vmx_vmptrld(&GuestState->VmcsRegionPhysicalAddress);
     if (status)
     {
         DbgPrint("[*] VMCS failed with status %d\n", status);
@@ -62,7 +66,7 @@ VOID SetupVmcsHostData(SEGMENT_DESCRIPTOR_REGISTER_64* Gdtr, SEGMENT_DESCRIPTOR_
     __vmx_vmwrite(VMCS_HOST_TR_SELECTOR, GetTr() & 0xF8);
 
     __vmx_vmwrite(VMCS_HOST_CR0, __readcr0());
-    __vmx_vmwrite(VMCS_HOST_CR3, __readcr3());
+    __vmx_vmwrite(VMCS_HOST_CR3, InitiateCr3/*__readcr3()*/);
     __vmx_vmwrite(VMCS_HOST_CR4, __readcr4());
 
     __vmx_vmwrite(VMCS_HOST_SYSENTER_CS, __readmsr(IA32_SYSENTER_CS));
@@ -173,7 +177,7 @@ VOID SetupVmcsGuestData(SEGMENT_DESCRIPTOR_REGISTER_64* Gdtr, SEGMENT_DESCRIPTOR
     __vmx_vmwrite(VMCS_GUEST_SYSENTER_ESP, __readmsr(IA32_SYSENTER_ESP));
 
     __vmx_vmwrite(VMCS_GUEST_RSP, (ULONG64)GuestStack);
-    __vmx_vmwrite(VMCS_GUEST_RIP, (ULONG64)VMXRestoreState);
+    __vmx_vmwrite(VMCS_GUEST_RIP, (ULONG64)AsmVMXRestoreState);
 }
 
 /// <summary>
@@ -222,6 +226,8 @@ VOID SetupVmcsControlData()
 
     // ------------ Secondary Procbased Controls ------------
 
+    //SecondaryControls.EnableEpt = TRUE; // testing
+
     SecondaryControls.EnableRdtscp = TRUE;
     SecondaryControls.EnableInvpcid = TRUE;
     SecondaryControls.EnableXsaves = TRUE;
@@ -252,8 +258,16 @@ VOID SetupVmcsControlData()
     __vmx_vmwrite(VMCS_CTRL_CR3_TARGET_VALUE_2, 0);
     __vmx_vmwrite(VMCS_CTRL_CR3_TARGET_VALUE_3, 0);
 
-    __vmx_vmwrite(VMCS_CTRL_MSR_BITMAP_ADDRESS, g_GuestState->MsrBitmapPhysical);
+    // testing
+    __vmx_vmwrite(VMCS_CTRL_CR0_GUEST_HOST_MASK, 0);
+    __vmx_vmwrite(VMCS_CTRL_CR4_GUEST_HOST_MASK, 0);
+    __vmx_vmwrite(VMCS_CTRL_CR0_READ_SHADOW, 0);
+    __vmx_vmwrite(VMCS_CTRL_CR4_READ_SHADOW, 0);
+    // end testing
 
+    __vmx_vmwrite(VMCS_CTRL_MSR_BITMAP_ADDRESS, g_GuestState->MsrBitmapPhysicalAddress);
+
+    //__vmx_vmwrite(VMCS_CTRL_EPT_POINTER, g_EptState->EptPointer.AsUInt); // testing
 }
 
 /// <summary>
@@ -345,7 +359,7 @@ IA32_VMX_BASIC_REGISTER GetBasicControls()
     return BasicControls;
 }
 
-BOOLEAN SetupVmcs(VIRTUAL_MACHINE_STATE* GuestState, EPT_POINTER* EPTP, PVOID GuestStack) 
+BOOLEAN SetupVmcs(VIRTUAL_MACHINE_STATE* GuestState, PVOID GuestStack) 
 {
     SEGMENT_DESCRIPTOR_REGISTER_64*  Gdtr = { 0 };
     SEGMENT_DESCRIPTOR_REGISTER_64*  Idtr = { 0 };
@@ -357,7 +371,7 @@ BOOLEAN SetupVmcs(VIRTUAL_MACHINE_STATE* GuestState, EPT_POINTER* EPTP, PVOID Gu
     
     DbgPrint("[hypoo] VMCS was setup successfully (i think lul)");
 
-    DebugVmcs(&Gdtr, &Idtr);
+    //DebugVmcs(&Gdtr, &Idtr);
 
     return TRUE;
 }
@@ -549,7 +563,7 @@ VOID DebugVmcs(SEGMENT_DESCRIPTOR_REGISTER_64* Gdtr, SEGMENT_DESCRIPTOR_REGISTER
 
     DbgPrint("host_state.tr_base: [0x%02X]", GetSegmentBase(Gdtr->BaseAddress, GetTr()));
 
-    DbgPrint("vmxon_ptr: [0x%02X]", g_GuestState->VmxonRegion);
+    DbgPrint("vmxon_ptr: [0x%02X]", g_GuestState->VmxonRegionVirtualAddress);
 
     DbgPrint("==================CONTROLS==================");
 

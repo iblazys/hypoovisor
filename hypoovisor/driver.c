@@ -2,6 +2,7 @@
 #include <wdf.h>
 
 #include "hypoovisor.h"
+#include "hvroutines.h"
 
 VOID Unload(IN PDRIVER_OBJECT Driver)
 {
@@ -19,7 +20,7 @@ NTSTATUS
 DrvCreate(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
 	// Start the hypervisor.
-	if (InitializeHV())
+	if (HvVmxInitialize())
 	{
 		DbgPrint("[hypoo] hypervisor initialized successfully.");
 	}
@@ -28,7 +29,7 @@ DrvCreate(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 		DbgPrint("[hypoo] hypervisor initialization failed.");
 	}
 
-	RunHV();
+	//RunHV();
 
 	// remove me
 	// StopHV(); // remove, for testing purposes via manual mapping

@@ -1,25 +1,32 @@
 #include "hypoovisor.h"
+#include "shared.h"
+#include "ept.h"
+#include "vmstate.h"
+#include "vmcs.h"
+#include "vmcall.h"
+#include "hvroutines.h"
 #include "processor.h"
 #include "utils.h"
 #include "memory.h"
-#include "ept.h"
-#include "vmcs.h"
+#include "dpc.h"
+
 #include <windef.h> // for BYTE*
 
-VIRTUAL_MACHINE_STATE *g_GuestState;
-UINT64 g_VirtualGuestMemoryAddress;
-int g_ProcessorCounts;
+//VIRTUAL_MACHINE_STATE *g_GuestState;
+UINT64 g_VirtualGuestMemoryAddress; // remove me
 
 /// <summary>
 /// Check processor support features and initialize VMX/EPT.
 /// </summary>
 /// <returns></returns>
-BOOLEAN InitializeHV() 
+BOOLEAN InitializeHV()
 {
+    INT ProcessorCount = 0;
+
 	DbgPrint("[hypoo] Hypoovisor initializing...");
 
     // TODO: Check EPT Support, g_VirtualGuestMemoryAddress gets its address from here.
-    EPT_POINTER* EPTp = InitializeEPTP();
+    EPT_POINTER* EPTp = InitializeEptPointer();
 
     if (!IsVMXSupported()) 
     {
@@ -27,56 +34,26 @@ BOOLEAN InitializeHV()
         return FALSE;
     }
 
-    g_ProcessorCounts = KeQueryActiveProcessorCount(0);
-    g_GuestState = ExAllocatePoolWithTag(NonPagedPool, sizeof(VIRTUAL_MACHINE_STATE) * g_ProcessorCounts, POOLTAG);
+    PAGED_CODE();
 
-    KAFFINITY AffinityMask;
-    for (size_t i = 0; i < g_ProcessorCounts; i++) // count lol
-    {
-        AffinityMask = MathPower(2, i);
-        KeSetSystemAffinityThread(AffinityMask);
+    ProcessorCount = KeQueryActiveProcessorCount(0);
 
-        DbgPrint("=====================================================");
-        DbgPrint("[hypoo] Current thread is executing in logical processor: %d", i);
+    // Allocate and zero guest state
+    g_GuestState = ExAllocatePoolWithTag(NonPagedPool, sizeof(VIRTUAL_MACHINE_STATE) * ProcessorCount, POOLTAG);
+    RtlZeroMemory(g_GuestState, sizeof(VIRTUAL_MACHINE_STATE) * ProcessorCount);
 
-        AsmEnableVmxOperation(); // lets move this into C eventually?
+    // Allocate	and zero ept state
+    g_EptState = ExAllocatePoolWithTag(NonPagedPool, sizeof(EPT_STATE), POOLTAG);
+    RtlZeroMemory(g_EptState, sizeof(EPT_STATE));
 
-        DbgPrint("[hypoo] VMX Operation Enabled Successfully !");
-
-        
-        if(!AllocateVMRegion(REGION_VMXON, &g_GuestState[i]))
-            return FALSE;
-
-        if (!AllocateVMRegion(REGION_VMCS, &g_GuestState[i]))
-            return FALSE;
-
-        DbgPrint("[*] VMCS Region is allocated at  ===============> %llx", g_GuestState[i].VmcsRegion);
-        DbgPrint("[*] VMXON Region is allocated at ===============> %llx", g_GuestState[i].VmxonRegion);
-
-        DbgPrint("\n=====================================================\n");
-    }
+    // TODO: EPT Stuff
 
     g_GuestState->Eptp = EPTp;
 
+    // Allocate and run vmxon and vmptrld on 
+    KeGenericCallDpc(HvDpcBroadcastAllocateVMRegions, 0x0);
+
 	return TRUE;
-}
-
-/// <summary>
-/// Virtualize the currently running system.
-/// </summary>
-/// <returns></returns>
-BOOLEAN RunHV() 
-{
-    int LogicalProcessorsCount = 1; // change to all processors; debug
-
-    for (size_t i = 0; i < LogicalProcessorsCount; i++)
-    {
-        g_GuestState[i].VmmStack = AllocateVMMStack();
-        g_GuestState[i].MsrBitmap = AllocateMSRBitmap();
-        g_GuestState[i].MsrBitmapPhysical = VirtualToPhysicalAddress(g_GuestState[i].MsrBitmap);
-
-        RunOnProcessor(i, g_GuestState->Eptp, VMXSaveState);
-    }
 }
 
 /// <summary>
@@ -85,38 +62,23 @@ BOOLEAN RunHV()
 /// <returns></returns>
 BOOLEAN StopHV() 
 {
-    TerminateVmx();
+    HvTerminateVmx();
 
     return TRUE;
 }
 
 /// <summary>
-/// 
+/// Assembly function AsmVMXSaveState calls this function.
 /// </summary>
-BOOLEAN RunOnProcessor(ULONG ProcessorNumber, EPT_POINTER* EPTP, PFUNC Routine)
+BOOLEAN LaunchVm(PVOID GuestStack)
 {
-    KIRQL OldIrql;
+    // TODO: More error checking
 
-    KeSetSystemAffinityThread((KAFFINITY)(1 << ProcessorNumber));
+    INT ProcessorID = 0;
 
-    OldIrql = KeRaiseIrqlToDpcLevel();
+    ProcessorID = KeGetCurrentProcessorNumber();
 
-    Routine(ProcessorNumber, EPTP);
-
-    KeLowerIrql(OldIrql);
-
-    KeRevertToUserAffinityThread();
-
-    return TRUE;
-}
-
-/// <summary>
-/// Assembly function VMXSaveState calls this function.
-/// </summary>
-VOID LaunchVm(int ProcessorID, EPT_POINTER* EPTP, PVOID GuestStack)
-{
-    DbgPrint("\n======================== Launching VM =============================\n");
-    DbgPrint("[hypoo]\t\tCurrent thread is executing in logical processor: %d \n", ProcessorID);
+    DbgPrint("\n======================== Launching VM  (Logical Core : 0x%x) =============================", ProcessorID);
 
     DbgPrint("[hypoo] Setting up VMCS...");
 
@@ -135,11 +97,14 @@ VOID LaunchVm(int ProcessorID, EPT_POINTER* EPTP, PVOID GuestStack)
     }
 
     // Setup the VMCS data
-    SetupVmcs(&g_GuestState[ProcessorID], EPTP, GuestStack);
+    SetupVmcs(&g_GuestState[ProcessorID], GuestStack);
 
     DbgPrint("[hypoo] Executing VMLAUNCH");
 
     INT32 Status = __vmx_vmlaunch();
+
+    // Should never reach this, unless there is an error in vmlaunch
+    __vmx_off();
 
     if (Status != 0)
     {
@@ -149,75 +114,143 @@ VOID LaunchVm(int ProcessorID, EPT_POINTER* EPTP, PVOID GuestStack)
         DbgPrint("[hypoo] VMLAUNCH Failed! VMLAUNCH returned [%d], VMX Error: 0x%0x", Status, VMXError);
     }
 
-    // TODO: Returning is not needed
-    return TRUE;
+    return FALSE;
 
 ErrorReturn:
     DbgPrint("[*] Fail to setup VMCS !\n");
     return FALSE;
 }
 
-VOID TerminateVmx()
+
+
+/// <summary>
+/// Terminates VMX via VMCALL
+/// </summary>
+/// <returns></returns>
+BOOLEAN VMXTerminate()
 {
-    DbgPrint("\n[hypoo] Terminating VMX...\n");
+    int CurrentCoreIndex;
+    NTSTATUS Status;
 
-    //int LogicalProcessorsCount = KeQueryActiveProcessorCount(0);
+    // Get the current core index
+    CurrentCoreIndex = KeGetCurrentProcessorNumber();
 
-    int LogicalProcessorsCount = 1; // test purposes
+    //LogInfo("\tTerminating VMX on logical core %d", CurrentCoreIndex);
 
-    for (size_t i = 0; i < LogicalProcessorsCount; i++)
+    // Execute Vmcall to to turn off vmx from Vmx root mode
+    Status = AsmVmxVmcall(VMCALL_VMXOFF, NULL, NULL, NULL);
+
+    if (Status == STATUS_SUCCESS)
     {
-        DbgPrint("\t\t + Terminating VMX on processor %d\n", i);
+        // Still in root mode, risky af
+        LogInfo("\tVMX termination was successful on logical core %d\n", CurrentCoreIndex);
 
-        TerminateVMXOnProcessor(i);
-
-        //
         // Free the destination memory
-        //
-        MmFreeContiguousMemory(PhysicalToVirtualAddress(g_GuestState[i].VmxonRegion));
-        MmFreeContiguousMemory(PhysicalToVirtualAddress(g_GuestState[i].VmcsRegion));
-        ExFreePoolWithTag(g_GuestState[i].VmmStack, POOLTAG);
-        ExFreePoolWithTag(g_GuestState[i].MsrBitmap, POOLTAG);
+        MmFreeContiguousMemory(g_GuestState[CurrentCoreIndex].VmxonRegionVirtualAddress);
+        MmFreeContiguousMemory(g_GuestState[CurrentCoreIndex].VmcsRegionVirtualAddress);
+
+        if(g_GuestState[CurrentCoreIndex].VmmStack)
+            ExFreePoolWithTag(g_GuestState[CurrentCoreIndex].VmmStack, POOLTAG);
+
+        if(g_GuestState[CurrentCoreIndex].MsrBitmapVirtualAddress)
+            ExFreePoolWithTag(g_GuestState[CurrentCoreIndex].MsrBitmapVirtualAddress, POOLTAG);
+        
+
+        // Still in root mode, risky af
+        LogInfo("\tFreed GuestState members on logical core %d\n", CurrentCoreIndex);
+
+        return TRUE;
     }
 
-    DbgPrint("[*] VMX terminated successfully. \n");
+    return FALSE;
 }
 
-BOOLEAN TerminateVMXOnProcessor(ULONG ProcessorNumber)
+VOID VMXVmxOff()
 {
-    KIRQL OldIrql;
-    INT32 CpuInfo[4];
+    int CurrentProcessorIndex;
+    UINT64 GuestRSP; 	// Save a pointer to guest rsp for times that we want to return to previous guest stateS
+    UINT64 GuestRIP; 	// Save a pointer to guest rip for times that we want to return to previous guest state
+    UINT64 GuestCr3;
+    UINT64 ExitInstructionLength;
 
-    KeSetSystemAffinityThread((KAFFINITY)(1 << ProcessorNumber));
 
-    OldIrql = KeRaiseIrqlToDpcLevel();
+    // Initialize the variables
+    ExitInstructionLength = 0;
+    GuestRIP = 0;
+    GuestRSP = 0;
 
-    //
-    // Our routine is VMXOFF
-    //
-    __cpuidex(CpuInfo, 0x41414141, 0x42424242);
+    CurrentProcessorIndex = KeGetCurrentProcessorNumber();
 
-    KeLowerIrql(OldIrql);
+    //LogInfo("attempting vmx_off on logical core %d", CurrentProcessorIndex);
 
-    KeRevertToUserAffinityThread();
+    /*
+    According to SimpleVisor :
+        Our callback routine may have interrupted an arbitrary user process,
+        and therefore not a thread running with a system-wide page directory.
+        Therefore if we return back to the original caller after turning off
+        VMX, it will keep our current "host" CR3 value which we set on entry
+        to the PML4 of the SYSTEM process. We want to return back with the
+        correct value of the "guest" CR3, so that the currently executing
+        process continues to run with its expected address space mappings.
+    */
 
-    return TRUE;
+    __vmx_vmread(VMCS_GUEST_CR3, &GuestCr3);
+    __writecr3(GuestCr3);
+
+    // Read guest rsp and rip
+    __vmx_vmread(VMCS_GUEST_RIP, &GuestRIP);
+    __vmx_vmread(VMCS_GUEST_RSP, &GuestRSP);
+
+    // Read instruction length
+    __vmx_vmread(VMCS_VMEXIT_INSTRUCTION_LENGTH, &ExitInstructionLength);
+    GuestRIP += ExitInstructionLength;
+
+    // Set the previous registe states
+    g_GuestState[CurrentProcessorIndex].VmxoffState.GuestRip = GuestRIP;
+    g_GuestState[CurrentProcessorIndex].VmxoffState.GuestRsp = GuestRSP;
+
+    // Notify the Vmexit handler that VMX already turned off
+    g_GuestState[CurrentProcessorIndex].VmxoffState.IsVmxoffExecuted = TRUE;
+
+    // Restore the previous FS, GS , GDTR and IDTR register so patchguard doesnt fuck us down
+    HvRestoreRegisters();
+
+    // Execute Vmxoff
+    __vmx_off();
+
+    // Part 8 test
+    //__writecr4(__readcr4() & (~CR4_VMX_ENABLE_FLAG));
 }
 
 BOOLEAN MainVmexitHandler(PGUEST_REGS GuestRegs)
-{
+{    
     BOOLEAN Status = FALSE;
+    int CurrentProcessorIndex = 0;
+    UINT64 GuestPhysicalAddr = 0;
+    UINT64 GuestRip = 0;
 
-    UINT32 ExitReason = 0;
-    __vmx_vmread(VMCS_EXIT_REASON, &ExitReason);
+    CurrentProcessorIndex = KeGetCurrentProcessorNumber();
 
-    UINT32 ExitQualification = 0;
+    // Check if VMX is already turned off before we start handling this vm exit
+    if (g_GuestState[CurrentProcessorIndex].IsOnVmxRootMode == FALSE && g_GuestState[CurrentProcessorIndex].VmxoffState.IsVmxoffExecuted)
+    {
+        LogError("VMEXIT occuring on logical processor with vmxoff already executed.");
+        return TRUE;
+    }
+
+    g_GuestState[CurrentProcessorIndex].IsOnVmxRootMode = TRUE;
+    g_GuestState[CurrentProcessorIndex].IncrementRip = TRUE;
+
+    ULONG ExitReason = 0;
+    __vmx_vmread(VMCS_EXIT_REASON, &ExitReason); // getting a illegal instruction exception here
+
+    ULONG ExitQualification = 0;
     __vmx_vmread(VMCS_EXIT_QUALIFICATION, &ExitQualification);
 
-    DbgPrint("\nVMCS_EXIT_REASION: 0x%x\n", ExitReason);
-    DbgPrint("\VMCS_EXIT_QUALIFICATION: 0x%x\n", ExitQualification);
+    //DbgPrint("\nVMCS_EXIT_REASION: 0x%x\n", ExitReason);
+    //DbgPrint("\VMCS_EXIT_QUALIFICATION: 0x%x\n", ExitQualification);
 
-    //ExitReason &= 0xFFFF;
+    ExitReason &= 0xFFFF;
 
     switch (ExitReason)
     {
@@ -227,6 +260,13 @@ BOOLEAN MainVmexitHandler(PGUEST_REGS GuestRegs)
         // INVD, and XSETBV. This is also true of instructions introduced with VMX, which include: INVEPT, INVVPID,
         // VMCALL, VMCLEAR, VMLAUNCH, VMPTRLD, VMPTRST, VMRESUME, VMXOFF, and VMXON.
         //
+
+    case VMX_EXIT_REASON_TRIPLE_FAULT:
+    {
+        DbgPrint("TRIPLE FAULT");
+        DbgBreakPoint();
+        break;
+    }
 
     case VMX_EXIT_REASON_EXECUTE_VMCLEAR:
     case VMX_EXIT_REASON_EXECUTE_VMPTRLD:
@@ -239,6 +279,7 @@ BOOLEAN MainVmexitHandler(PGUEST_REGS GuestRegs)
     case VMX_EXIT_REASON_EXECUTE_VMLAUNCH:
     {
         DbgPrint("[hypoo][VMEXIT] Execution of vmlaunch detected... \n");
+
         ULONG RFLAGS = 0;
         __vmx_vmread(VMCS_GUEST_RFLAGS, &RFLAGS);
         __vmx_vmwrite(VMCS_GUEST_RFLAGS, RFLAGS | 0x1); // cf=1 indicate vm instructions fail
@@ -256,23 +297,9 @@ BOOLEAN MainVmexitHandler(PGUEST_REGS GuestRegs)
 
     case VMX_EXIT_REASON_EXECUTE_CPUID:
     {
-        DbgPrint("[hypoo][VMEXIT] Execution of cpuid detected... \n");
+        //DbgPrint("[hypoo][VMEXIT] Execution of cpuid detected... \n");
 
-        Status = HandleCPUID(GuestRegs); // Detect whether we have to turn off VMX or Not
-
-        if (Status)
-        {
-            // We have to save GUEST_RIP & GUEST_RSP somewhere to restore them directly
-
-            ULONG ExitInstructionLength = 0;
-            g_GuestRIP = 0;
-            g_GuestRSP = 0;
-            __vmx_vmread(VMCS_GUEST_RIP, &g_GuestRIP);
-            __vmx_vmread(VMCS_GUEST_RSP, &g_GuestRSP);
-            __vmx_vmread(VMCS_VMEXIT_INSTRUCTION_LENGTH, &ExitInstructionLength);
-
-            g_GuestRIP += ExitInstructionLength;
-        }
+        HvHandleCPUID(GuestRegs);
 
         break;
     }
@@ -284,11 +311,16 @@ BOOLEAN MainVmexitHandler(PGUEST_REGS GuestRegs)
 
     case VMX_EXIT_REASON_EXECUTE_VMCALL:
     {
+        GuestRegs->rax = VMXVmcallHandler(GuestRegs->rcx, GuestRegs->rdx, GuestRegs->r8, GuestRegs->r9); // kinda helps if this is here -.-
         break;
     }
 
     case VMX_EXIT_REASON_MOV_CR:
     {
+        DbgPrint("[hypoo][VMEXIT] Execution of CR access... \n");
+        DbgBreakPoint();
+
+        HvHandleControlRegisterAccess(GuestRegs);
         break;
     }
 
@@ -326,16 +358,33 @@ BOOLEAN MainVmexitHandler(PGUEST_REGS GuestRegs)
 
     case VMX_EXIT_REASON_EPT_VIOLATION:
     {
+        // Reading guest physical address
+        GuestPhysicalAddr = 0;
+        __vmx_vmread(VMCS_GUEST_PHYSICAL_ADDRESS, &GuestPhysicalAddr);
+        LogInfo("Guest Physical Address : 0x%llx", GuestPhysicalAddr);
+
+        // Reading guest's RIP 
+        GuestRip = 0;
+        __vmx_vmread(VMCS_GUEST_RIP, &GuestRip);
+        LogInfo("Guest Rip : 0x%llx", GuestRip);
+
+        if (!EptHandleEptViolation(ExitQualification, GuestPhysicalAddr))
+        {
+            LogError("There were errors in handling Ept Violation");
+        }
+
         break;
     }
 
-    /* now VMX_EXIT_REASON_PAUSE ?
-    case EXIT_REASON_CR_ACCESS:
+    case VMX_EXIT_REASON_EPT_MISCONFIGURATION:
     {
-        HandleControlRegisterAccess(GuestRegs);
+        GuestPhysicalAddr = 0;
+        __vmx_vmread(VMCS_GUEST_PHYSICAL_ADDRESS, &GuestPhysicalAddr);
+
+        EptHandleMisconfiguration(GuestPhysicalAddr);
+
         break;
     }
-    */
 
     default:
     {
@@ -345,148 +394,20 @@ BOOLEAN MainVmexitHandler(PGUEST_REGS GuestRegs)
     }
     }
 
-    if (!Status)
+    if (!g_GuestState[CurrentProcessorIndex].VmxoffState.IsVmxoffExecuted && g_GuestState[CurrentProcessorIndex].IncrementRip)
     {
         ResumeToNextInstruction();
     }
 
-    return Status;
-}
+    // Set indicator of Vmx non root mode to false
+    g_GuestState[CurrentProcessorIndex].IsOnVmxRootMode = FALSE;
 
-BOOLEAN HandleCPUID(PGUEST_REGS state)
-{
-    INT32 CpuInfo[4];
-    ULONG Mode = 0;
-
-    //
-    // Check for the magic CPUID sequence, and check that it is coming from
-    // Ring 0. Technically we could also check the RIP and see if this falls
-    // in the expected function, but we may want to allow a separate "unload"
-    // driver or code at some point
-    //
-
-    __vmx_vmread(VMCS_GUEST_CS_SELECTOR, &Mode);
-    Mode = Mode & RPL_MASK;
-
-    if ((state->rax == 0x41414141) && (state->rcx == 0x42424242) && Mode == DPL_SYSTEM)
+    if (g_GuestState[CurrentProcessorIndex].VmxoffState.IsVmxoffExecuted)
     {
-        return TRUE; // Indicates we have to turn off VMX
+        return TRUE;
     }
 
-    //
-    // Otherwise, issue the CPUID to the logical processor based on the indexes
-    // on the VP's GPRs
-    //
-    __cpuidex(CpuInfo, (INT32)state->rax, (INT32)state->rcx);
-
-    //
-    // Check if this was CPUID 1h, which is the features request
-    //
-    if (state->rax == 1)
-    {
-        //
-        // Set the Hypervisor Present-bit in RCX, which Intel and AMD have both
-        // reserved for this indication
-        //
-        CpuInfo[2] |= HYPERV_HYPERVISOR_PRESENT_BIT;
-    }
-
-    else if (state->rax == HYPERV_CPUID_INTERFACE)
-    {
-        //
-        // Return our interface identifier
-        //
-        CpuInfo[0] = 'HVFS'; // [H]yper[V]isor [F]rom [S]cratch
-    }
-
-    //
-    // Copy the values from the logical processor registers into the VP GPRs
-    //
-    state->rax = CpuInfo[0];
-    state->rbx = CpuInfo[1];
-    state->rcx = CpuInfo[2];
-    state->rdx = CpuInfo[3];
-
-    return FALSE; // Indicates we don't have to turn off VMX
-}
-
-VOID HandleControlRegisterAccess(PGUEST_REGS GuestState)
-{
-    ULONG ExitQualification = 0;
-
-    __vmx_vmread(VMCS_EXIT_QUALIFICATION, &ExitQualification);
-
-    VMX_EXIT_QUALIFICATION_MOV_CR data = { 0 };
-
-    data.AsUInt = &ExitQualification;
-
-    PULONG64 RegPtr = (PULONG64)&GuestState->rax + data.ControlRegister;
-
-    //
-    // Because its RSP and as we didn't save RSP correctly (because of pushes)
-    // so we have to make it points to the GUEST_RSP
-    //
-    if (data.ControlRegister == 4)
-    {
-        INT64 RSP = 0;
-        __vmx_vmread(VMCS_GUEST_RSP, &RSP);
-        *RegPtr = RSP;
-    }
-
-    switch (data.AccessType)
-    {
-    case VMX_EXIT_QUALIFICATION_ACCESS_MOV_TO_CR:
-    {
-        switch (data.ControlRegister)
-        {
-        case 0:
-            __vmx_vmwrite(VMCS_GUEST_CR0, *RegPtr);
-            __vmx_vmwrite(VMCS_CTRL_CR0_READ_SHADOW, *RegPtr);
-            break;
-        case 3:
-
-            __vmx_vmwrite(VMCS_GUEST_CR3, (*RegPtr & ~(1ULL << 63)));
-
-            //
-            // In the case of using EPT, the context of EPT/VPID should be
-            // invalidated
-            //
-            break;
-        case 4:
-            __vmx_vmwrite(VMCS_GUEST_CR4, *RegPtr);
-            __vmx_vmwrite(VMCS_CTRL_CR4_READ_SHADOW, *RegPtr);
-            break;
-        default:
-            DbgPrint("[*] Unsupported register %d\n", data.ControlRegister);
-            break;
-        }
-    }
-    break;
-
-    case VMX_EXIT_QUALIFICATION_ACCESS_MOV_FROM_CR:
-    {
-        switch (data.ControlRegister)
-        {
-        case 0:
-            __vmx_vmread(VMCS_GUEST_CR0, RegPtr);
-            break;
-        case 3:
-            __vmx_vmread(VMCS_GUEST_CR3, RegPtr);
-            break;
-        case 4:
-            __vmx_vmread(VMCS_GUEST_CR4, RegPtr);
-            break;
-        default:
-            DbgPrint("[*] Unsupported register %d\n", data.ControlRegister);
-            break;
-        }
-    }
-    break;
-
-    default:
-        DbgPrint("[*] Unsupported operation %d\n", data.AccessType);
-        break;
-    }
+    return FALSE;
 }
 
 VOID HandleMSRRead(PGUEST_REGS GuestRegs)
@@ -534,16 +455,16 @@ VOID HandleMSRWrite(PGUEST_REGS GuestRegs)
 
 VOID ResumeToNextInstruction()
 {
-    PVOID ResumeRIP = NULL;
-    PVOID CurrentRIP = NULL;
+    ULONG64 ResumeRIP = NULL;
+    ULONG64 CurrentRIP = NULL;
     ULONG ExitInstructionLength = 0;
 
     __vmx_vmread(VMCS_GUEST_RIP, &CurrentRIP);
     __vmx_vmread(VMCS_VMEXIT_INSTRUCTION_LENGTH, &ExitInstructionLength);
 
-    ResumeRIP = (PCHAR)CurrentRIP + ExitInstructionLength;
+    ResumeRIP = CurrentRIP + ExitInstructionLength;
 
-    __vmx_vmwrite(VMCS_GUEST_RIP, (ULONG64)ResumeRIP);
+    __vmx_vmwrite(VMCS_GUEST_RIP, ResumeRIP);
 }
 
 VOID VmResumeInstruction()
@@ -564,4 +485,40 @@ VOID VmResumeInstruction()
     // prefer to break
     //
     DbgBreakPoint();
+}
+
+/* Invalidate EPT using Vmcall (should be called from Vmx non root mode) */
+VOID HvInvalidateEptByVmcall(UINT64 Context)
+{
+    if (Context == NULL)
+    {
+        // We have to invalidate all contexts
+        AsmVmxVmcall(VMCALL_INVEPT_ALL_CONTEXT, NULL, NULL, NULL);
+    }
+    else
+    {
+        // We have to invalidate all contexts
+        AsmVmxVmcall(VMCALL_INVEPT_SINGLE_CONTEXT, Context, NULL, NULL);
+    }
+}
+
+VOID HvNotifyAllToInvalidateEpt()
+{
+    // Let's notify them all
+    KeIpiGenericCall(HvInvalidateEptByVmcall, g_EptState->EptPointer.AsUInt);
+}
+
+//
+// TEMPORARY
+//
+
+/* Print logs in different levels */
+VOID LogPrintInfo(PCSTR Format) {
+    DbgPrint(Format);
+}
+VOID LogPrintWarning(PCSTR Format) {
+    DbgPrint(Format);
+}
+VOID LogPrintError(PCSTR Format) {
+    DbgPrint(Format);
 }

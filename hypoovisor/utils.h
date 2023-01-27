@@ -1,4 +1,6 @@
-#pragma once
+#ifndef UTILS_H
+#define UTILS_H
+
 #include <ntddk.h>
 #include <wdf.h> // BYTE
 
@@ -7,3 +9,4 @@ BOOLEAN IsBitSet(SIZE_T BitField, SIZE_T BitPosition);
 VOID SetBit(PVOID Addr, UINT64 Bit, BOOLEAN Set);
 VOID GetBit(PVOID Addr, UINT64 Bit);
 
+#endif

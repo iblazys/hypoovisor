@@ -1,64 +1,74 @@
-PUBLIC VMXSaveState
-PUBLIC VMXRestoreState
+PUBLIC AsmVMXSaveState
+PUBLIC AsmVMXRestoreState
 
 EXTERN LaunchVm:PROC ; LaunchVm(), VirtualizeCurrentSystem()
 
 .code _text
 
-VMXSaveState PROC
+;------------------------------------------------------------------------
 
-	PUSH RAX
-	PUSH RCX
-	PUSH RDX
-	PUSH RBX
-	PUSH RBP
-	PUSH RSI
-	PUSH RDI
-	PUSH R8
-	PUSH R9
-	PUSH R10
-	PUSH R11
-	PUSH R12
-	PUSH R13
-	PUSH R14
-	PUSH R15
-
-	SUB RSP, 28h
-
-	; It a x64 FastCall function but as long as the definition of SaveState is the same
-	; as VirtualizeCurrentSystem, so we RCX & RDX both have a correct value
-	; But VirtualizeCurrentSystem also has a stack, so it's the third argument
-	; and according to FastCall, it should be in R8
-
-	MOV R8, RSP
-
-	CALL LaunchVm ; LaunchVm(), VirtualizeCurrentSystem()
-
-	RET
-
-VMXSaveState ENDP
-
-VMXRestoreState PROC
-
-	ADD RSP, 28h
-	POP R15
-	POP R14
-	POP R13
-	POP R12
-	POP R11
-	POP R10
-	POP R9
-	POP R8
-	POP RDI
-	POP RSI
-	POP RBP
-	POP RBX
-	POP RDX
-	POP RCX
-	POP RAX
+AsmVMXSaveState PROC
 	
-	RET
+	pushfq	; save r/eflag
+
+	push rax
+	push rcx
+	push rdx
+	push rbx
+	push rbp
+	push rsi
+	push rdi
+	push r8
+	push r9
+	push r10
+	push r11
+	push r12
+	push r13
+	push r14
+	push r15
+
+	sub rsp, 0100h
+	; It a x64 FastCall function so the first parameter should go to rcx
+
+	mov rcx, rsp
+
+	call LaunchVm
+
+	int 3	; we should never reach here as we execute vmlaunch in the above function.
+			; if rax is FALSE then it's an indication of error
+
+	jmp AsmVMXRestoreState
+		
+AsmVMXSaveState ENDP
+
+;------------------------------------------------------------------------
+
+AsmVMXRestoreState PROC
 	
-VMXRestoreState ENDP
+	add rsp, 0100h
+
+	pop r15
+	pop r14
+	pop r13
+	pop r12
+	pop r11
+	pop r10
+	pop r9
+	pop r8
+	pop rdi
+	pop rsi
+	pop rbp
+	pop rbx
+	pop rdx
+	pop rcx
+	pop rax
+	
+	popfq	; restore r/eflags
+
+	ret
+	
+AsmVMXRestoreState ENDP
+
+;------------------------------------------------------------------------
 
 END

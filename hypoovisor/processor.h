@@ -1,6 +1,11 @@
-#pragma once
+#ifndef PROCESSOR_H
+#define PROCESSOR_H
 
 #include <ntddk.h>
+
+//
+// Contains functions that will allow the hypervisor to run on multiple cpu's.
+// 
 
 BOOLEAN IsVMXSupported();
 
@@ -14,3 +19,4 @@ BOOLEAN IsCPUFeaturePresent(INT32 FunctionId, INT32 SubFunctionId, INT32 CPUIDRe
 
 //BOOLEAN IsVMXAvailable();
 
+#endif

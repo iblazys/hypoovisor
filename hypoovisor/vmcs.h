@@ -1,4 +1,6 @@
-#pragma once
+#ifndef VMCS_H
+#define VMCS_H
+
 #include "hypoovisor.h"
 
 // wont need this soon
@@ -28,7 +30,7 @@ UINT64 VmptrstInstruction();
 BOOLEAN ClearVmcsState(VIRTUAL_MACHINE_STATE* GuestState);
 BOOLEAN LoadVmcs(VIRTUAL_MACHINE_STATE* GuestState);
 
-BOOLEAN SetupVmcs(VIRTUAL_MACHINE_STATE* GuestState, EPT_POINTER* EPTP, PVOID GuestStack);
+BOOLEAN SetupVmcs(VIRTUAL_MACHINE_STATE* GuestState, PVOID GuestStack);
 
 // remove data in namings perhaps
 VOID SetupVmcsControlData();
@@ -49,3 +51,5 @@ VOID DebugVmcs(SEGMENT_DESCRIPTOR_REGISTER_64* Gdtr, SEGMENT_DESCRIPTOR_REGISTER
 UINT64 GetSegmentBase(UINT64 GdtBase, UINT16 SegmentSelector);
 UINT32 ReadSegmentAccessRights(UINT16 SegmentSelector);
 ULONG AdjustControls(ULONG CapabilityMSR, ULONG Value);
+
+#endif

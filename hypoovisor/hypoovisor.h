@@ -1,7 +1,13 @@
 #pragma once
+
+#ifndef HYPOOVISOR_H
+#define HYPOOVISOR_H
+
 #include <ntddk.h>
 #include <ia32.h>
 #include <intrin.h>
+
+#include "shared.h"
 
 #include "processor.h"
 
@@ -13,9 +19,6 @@
 #define VMCS_SIZE           4096
 #define VMXON_SIZE          4096
 #define VMM_STACK_SIZE      0x8000
-
-#define POOLTAG 0x48564653 // [H]yper[V]isor [F]rom [S]cratch (HVFS) - TODO: Change ME
-#define RPL_MASK    3
 
 // Hyper-V Shit
 #define HYPERV_CPUID_VENDOR_AND_MAX_FUNCTIONS 0x40000000
@@ -29,18 +32,37 @@
 #define HYPERV_CPUID_MIN              0x40000005
 #define HYPERV_CPUID_MAX              0x4000ffff
 
-// System and User Ring Definitions
-#define DPL_USER                3
-#define DPL_SYSTEM              0
+typedef struct _VMX_NON_ROOT_MODE_MEMORY_ALLOCATOR
+{
+    PVOID PreAllocatedBuffer;		// As we can't use ExAllocatePoolWithTag in VMX Root mode, this holds a pre-allocated buffer address
+                                    // PreAllocatedBuffer == 0 indicates that it's not previously allocated
+} VMX_NON_ROOT_MODE_MEMORY_ALLOCATOR, * PVMX_NON_ROOT_MODE_MEMORY_ALLOCATOR;
+
+typedef struct _VMX_VMXOFF_STATE
+{
+    BOOLEAN IsVmxoffExecuted;					// Shows whether the VMXOFF executed or not
+    UINT64  GuestRip;							// Rip address of guest to return
+    UINT64  GuestRsp;							// Rsp address of guest to return
+
+} VMX_VMXOFF_STATE, * PVMX_VMXOFF_STATE;
 
 typedef struct _VIRTUAL_MACHINE_STATE
 {
-    UINT64 VmxonRegion; // VMXON region
-    UINT64 VmcsRegion;  // VMCS region
-    EPT_POINTER* Eptp;              // Extended-Page-Table Pointer
-    UINT64 VmmStack;          // Stack for VMM in VM-Exit State
-    UINT64 MsrBitmap;         // MSR Bitmap Virtual Address
-    UINT64 MsrBitmapPhysical; // MSR Bitmap Physical Address
+    BOOLEAN IsOnVmxRootMode;							// Detects whether the current logical core is on Executing on VMX Root Mode
+    BOOLEAN IncrementRip;								// Checks whether it has to redo the previous instruction or not (it used mainly in Ept routines)
+
+    UINT64 VmxonRegionPhysicalAddress;					// Vmxon region physical address
+    UINT64 VmxonRegionVirtualAddress;					// VMXON region virtual address
+    UINT64 VmcsRegionPhysicalAddress;					// VMCS region physical address
+    UINT64 VmcsRegionVirtualAddress;					// VMCS region virtual address
+    UINT64 MsrBitmapVirtualAddress;                     // MSR Bitmap Virtual Address
+    UINT64 MsrBitmapPhysicalAddress;                    // MSR Bitmap Physical Address
+
+    EPT_POINTER* Eptp;                                  // Extended-Page-Table Pointer
+    UINT64 VmmStack;                                    // Stack for VMM in VM-Exit State
+    VMX_NON_ROOT_MODE_MEMORY_ALLOCATOR PreAllocatedMemoryDetails; // The details of pre-allocated memory
+    VMX_VMXOFF_STATE VmxoffState;
+
 } VIRTUAL_MACHINE_STATE, * PVIRTUAL_MACHINE_STATE;
 
 enum SEGREGS
@@ -61,6 +83,7 @@ typedef enum
     REGION_VMXON
 } REGIONTYPE;
 
+/**
 typedef struct _GUEST_REGS
 {
     ULONG64 rax; // 0x00         // NOT VALID FOR SVM
@@ -80,22 +103,27 @@ typedef struct _GUEST_REGS
     ULONG64 r14; // 0x70
     ULONG64 r15;
 } GUEST_REGS, * PGUEST_REGS;
+*/
 
 typedef void (*PFUNC)(IN ULONG ProcessorID, IN EPT_POINTER* EPTP);
 
 UINT64 g_GuestRSP;
 UINT64 g_GuestRIP;
 
-extern VIRTUAL_MACHINE_STATE *g_GuestState;
 extern UINT64 g_VirtualGuestMemoryAddress;
-extern int g_ProcessorCounts;
 
-// ASM Functions
+// ASM Functions - clean this shit up
 extern void inline AsmEnableVmxOperation(void);
+extern NTSTATUS inline  AsmVmxVmcall(unsigned long long VmcallNumber, unsigned long long OptionalParam1, unsigned long long OptionalParam2, unsigned long long OptionalParam3);
+extern unsigned char inline AsmInvept(unsigned long Type, void* Descriptors);
 extern void inline AsmVmxoffAndRestoreState();
 extern void inline AsmSaveStateForVmxoff();
-extern void inline VMXSaveState();
-extern void inline VMXRestoreState();
+
+extern void AsmReloadGdtr(void* GdtBase, unsigned long GdtLimit);
+extern void AsmReloadIdtr(void* GdtBase, unsigned long GdtLimit);
+
+extern void AsmVMXSaveState();
+extern void AsmVMXRestoreState();
 extern void AsmVmexitHandler();
 
 extern ULONG64 MSRRead(ULONG32 reg);
@@ -116,21 +144,24 @@ ULONG64 GetRflags(VOID);
 UINT32 __load_ar(VOID);
 
 BOOLEAN InitializeHV();
-BOOLEAN RunHV();
 BOOLEAN StopHV();
 
-BOOLEAN RunOnProcessor(ULONG ProcessorNumber, EPT_POINTER* EPTP, PFUNC Routine);
-BOOLEAN TerminateVMXOnProcessor(ULONG ProcessorNumber);
-VOID LaunchVm(int ProcessorID, EPT_POINTER* EPTP, PVOID GuestStack);
-VOID TerminateVmx();
+BOOLEAN VMXTerminate();
+VOID VMXVmxOff();
+
+BOOLEAN LaunchVm(PVOID GuestStack);
 VOID ResumeToNextInstruction();
 VOID VmResumeInstruction();
 
 // handlers - vmxhandlers.c ?
 BOOLEAN MainVmexitHandler(PGUEST_REGS GuestRegs);
-BOOLEAN HandleCPUID(PGUEST_REGS state);
-VOID HandleControlRegisterAccess(PGUEST_REGS GuestState);
 VOID HandleMSRRead(PGUEST_REGS GuestRegs);
 VOID HandleMSRWrite(PGUEST_REGS GuestRegs);
+
+// Hypoo functions, move these?
+VOID HvInvalidateEptByVmcall(UINT64 Context);
+VOID HvNotifyAllToInvalidateEpt();
+
+#endif
 
 
