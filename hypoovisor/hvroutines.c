@@ -32,25 +32,26 @@ BOOLEAN HvVmxInitialize()
 			// Error is recorded in previous functions.
 			return FALSE;
 		}
-
-		InitiateCr3 = __readcr3();
-
-		// Let windows execute our routine for us, this eventually calls vmlaunch
-		KeGenericCallDpc(HvDpcBroadcastAsmVMXSaveState, 0x0);
-
-		//  Check if everything is ok then return true otherwise false
-		if (AsmVmxVmcall(VMCALL_TEST, 0x22, 0x333, 0x4444) == STATUS_SUCCESS)
-		{
-			///////////////// Test Hook after Vmx is launched /////////////////
-			//EptPageHook(ExAllocatePoolWithTag, TRUE);
-			///////////////////////////////////////////////////////////////////
-			return TRUE;
-		}
-		else
-		{
-			return FALSE;
-		}
 	}
+
+	InitiateCr3 = __readcr3();
+
+	// Let windows execute our routine for us, this eventually calls vmlaunch
+	KeGenericCallDpc(HvDpcBroadcastAsmVMXSaveState, 0x0);
+
+	//  Check if everything is ok then return true otherwise false
+	if (AsmVmxVmcall(VMCALL_TEST, 0x22, 0x333, 0x4444) == STATUS_SUCCESS)
+	{
+		///////////////// Test Hook after Vmx is launched /////////////////
+		//EptPageHook(ExAllocatePoolWithTag, TRUE);
+		///////////////////////////////////////////////////////////////////
+		return TRUE;
+	}
+	else
+	{
+		return FALSE;
+	}
+	
 
 	return TRUE;
 }

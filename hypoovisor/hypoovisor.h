@@ -140,7 +140,7 @@ USHORT GetLdtr(VOID);
 USHORT GetTr(VOID);
 USHORT GetIdtLimit(VOID);
 USHORT GetGdtLimit(VOID);
-ULONG64 GetRflags(VOID);
+extern ULONG64 GetRflags(VOID);
 UINT32 __load_ar(VOID);
 
 BOOLEAN InitializeHV();

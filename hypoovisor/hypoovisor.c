@@ -26,7 +26,7 @@ BOOLEAN InitializeHV()
 	DbgPrint("[hypoo] Hypoovisor initializing...");
 
     // TODO: Check EPT Support, g_VirtualGuestMemoryAddress gets its address from here.
-    EPT_POINTER* EPTp = InitializeEptPointer();
+    //EPT_POINTER* EPTp = InitializeEptPointer();
 
     if (!IsVMXSupported()) 
     {
@@ -48,7 +48,7 @@ BOOLEAN InitializeHV()
 
     // TODO: EPT Stuff
 
-    g_GuestState->Eptp = EPTp;
+    //g_GuestState->Eptp = EPTp;
 
     // Allocate and run vmxon and vmptrld on 
     KeGenericCallDpc(HvDpcBroadcastAllocateVMRegions, 0x0);
@@ -63,6 +63,8 @@ BOOLEAN InitializeHV()
 BOOLEAN StopHV() 
 {
     HvTerminateVmx();
+
+    LogInfo("Hypoovisor stopped.");
 
     return TRUE;
 }
@@ -135,7 +137,7 @@ BOOLEAN VMXTerminate()
     // Get the current core index
     CurrentCoreIndex = KeGetCurrentProcessorNumber();
 
-    //LogInfo("\tTerminating VMX on logical core %d", CurrentCoreIndex);
+    LogInfo("\tTerminating VMX on logical core %d", CurrentCoreIndex);
 
     // Execute Vmcall to to turn off vmx from Vmx root mode
     Status = AsmVmxVmcall(VMCALL_VMXOFF, NULL, NULL, NULL);
@@ -143,7 +145,7 @@ BOOLEAN VMXTerminate()
     if (Status == STATUS_SUCCESS)
     {
         // Still in root mode, risky af
-        LogInfo("\tVMX termination was successful on logical core %d\n", CurrentCoreIndex);
+        LogInfo("\tVMX termination was successful on logical core %d", CurrentCoreIndex);
 
         // Free the destination memory
         MmFreeContiguousMemory(g_GuestState[CurrentCoreIndex].VmxonRegionVirtualAddress);
@@ -157,7 +159,7 @@ BOOLEAN VMXTerminate()
         
 
         // Still in root mode, risky af
-        LogInfo("\tFreed GuestState members on logical core %d\n", CurrentCoreIndex);
+        LogInfo("\tFreed GuestState members on logical core %d", CurrentCoreIndex);
 
         return TRUE;
     }
@@ -193,6 +195,8 @@ VOID VMXVmxOff()
         correct value of the "guest" CR3, so that the currently executing
         process continues to run with its expected address space mappings.
     */
+
+    UINT64 HOST = InitiateCr3;
 
     __vmx_vmread(VMCS_GUEST_CR3, &GuestCr3);
     __writecr3(GuestCr3);
