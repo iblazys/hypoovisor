@@ -29,7 +29,6 @@ BOOLEAN ClearVmcsState(VIRTUAL_MACHINE_STATE* GuestState)
     // Clear the state of the VMCS to inactive
     int status = __vmx_vmclear(&GuestState->VmcsRegionPhysicalAddress);
 
-    DbgPrint("[*] VMCS VMCLEAR Status is : %d\n", status);
     if (status)
     {
         // Otherwise, terminate the VMX
@@ -58,7 +57,7 @@ VOID SetupVmcsHostData(SEGMENT_DESCRIPTOR_REGISTER_64* Gdtr, SEGMENT_DESCRIPTOR_
 {
     PVOID HostRSP = 0;
 
-    DbgPrint("[hypoo] Setting up VMCS host data");
+    //DbgPrint("[hypoo] Setting up VMCS host data");
 
     __vmx_vmwrite(VMCS_HOST_ES_SELECTOR, GetEs() & 0xF8);
     __vmx_vmwrite(VMCS_HOST_CS_SELECTOR, GetCs() & 0xF8);
@@ -95,19 +94,11 @@ VOID SetupVmcsHostData(SEGMENT_DESCRIPTOR_REGISTER_64* Gdtr, SEGMENT_DESCRIPTOR_
 
     __vmx_vmwrite(VMCS_HOST_RSP, HostRSP);
     __vmx_vmwrite(VMCS_HOST_RIP, (ULONG64)AsmVmexitHandler);
-
-    // DEBUG
-    /*
-    DbgPrint("host_state.gdtr_base: [0x%02X]", Gdtr->BaseAddress);
-    DbgPrint("host_state.gdtr_limit: [0x%02X]", Gdtr->Limit);
-    DbgPrint("host_state.idtr_base: [0x%02X]", Idtr->BaseAddress);
-    DbgPrint("host_state.idtr_limit: [0x%02X]", Idtr->Limit);
-    */
 }
 
 VOID SetupVmcsGuestData(SEGMENT_DESCRIPTOR_REGISTER_64* Gdtr, SEGMENT_DESCRIPTOR_REGISTER_64* Idtr, PVOID GuestStack)
 {
-    DbgPrint("[hypoo] Setting up VMCS guest data");
+    //DbgPrint("[hypoo] Setting up VMCS guest data");
 
     // ------------ Segmentation -----------------
     //SEGMENT_DESCRIPTOR_REGISTER_64  Gdtr = { 0 };
@@ -196,7 +187,7 @@ VOID SetupVmcsGuestData(SEGMENT_DESCRIPTOR_REGISTER_64* Gdtr, SEGMENT_DESCRIPTOR
 /// </summary>
 VOID SetupVmcsControlData() 
 {
-    DbgPrint("[hypoo] Setting up VMCS controls");
+    //DbgPrint("[hypoo] Setting up VMCS controls");
 
     IA32_VMX_PINBASED_CTLS_REGISTER PinbasedControls = { 0 };
     IA32_VMX_PROCBASED_CTLS_REGISTER ProcbasedControls = { 0 };
@@ -237,7 +228,7 @@ VOID SetupVmcsControlData()
 
     // ------------ Secondary Procbased Controls ------------
 
-    //SecondaryControls.EnableEpt = TRUE; // testing
+    SecondaryControls.EnableEpt = TRUE; // testing
 
     SecondaryControls.EnableRdtscp = TRUE;
     SecondaryControls.EnableInvpcid = TRUE;
@@ -278,7 +269,7 @@ VOID SetupVmcsControlData()
 
     __vmx_vmwrite(VMCS_CTRL_MSR_BITMAP_ADDRESS, g_GuestState->MsrBitmapPhysicalAddress);
 
-    //__vmx_vmwrite(VMCS_CTRL_EPT_POINTER, g_EptState->EptPointer.AsUInt); // testing
+    __vmx_vmwrite(VMCS_CTRL_EPT_POINTER, g_EptState->EptPointer.AsUInt); // testing
 }
 
 /// <summary>
@@ -380,7 +371,7 @@ BOOLEAN SetupVmcs(VIRTUAL_MACHINE_STATE* GuestState, PVOID GuestStack)
     SetupVmcsGuestData(&Gdtr, &Idtr, GuestStack);
     SetupVmcsHostData(&Gdtr, &Idtr);
     
-    DbgPrint("[hypoo] VMCS was setup successfully (i think lul)");
+    //DbgPrint("[hypoo] VMCS was setup successfully (i think lul)");
 
     //DebugVmcs(&Gdtr, &Idtr);
 

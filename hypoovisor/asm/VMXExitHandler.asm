@@ -38,9 +38,9 @@ AsmVmexitHandler PROC
     push rax	
 
 	mov rcx, rsp		; Fast call argument to PGUEST_REGS
-	sub	rsp, 20h		; Free some space for Shadow Section
+	sub	rsp, 28h		; Free some space for Shadow Section
 	call	MainVmexitHandler
-	add	rsp, 20h		; Restore the state
+	add	rsp, 28h		; Restore the state
 
 	cmp	al, 1	; Check whether we have to turn off VMX or Not (the result is in RAX)
 	je		AsmVmxoffHandler

@@ -23,14 +23,11 @@ BOOLEAN InitializeHV()
 {
     INT ProcessorCount = 0;
     
-	DbgPrint("[hypoo] Hypoovisor initializing...");
-
-    // TODO: Check EPT Support, g_VirtualGuestMemoryAddress gets its address from here.
-    //EPT_POINTER* EPTp = InitializeEptPointer();
+	LogInfo("Hypoovisor initializing...");
 
     if (!IsVMXSupported()) 
     {
-        DbgPrint("[hypoo] VMX is not supported on this processor.");
+        LogError("VMX is not supported on this processor.");
         return FALSE;
     }
 
@@ -38,19 +35,45 @@ BOOLEAN InitializeHV()
 
     ProcessorCount = KeQueryActiveProcessorCount(0);
 
-    // Allocate and zero guest state
+    //
+    // Allocate and zero globals
+    //
+
     g_GuestState = ExAllocatePoolWithTag(NonPagedPool, sizeof(VIRTUAL_MACHINE_STATE) * ProcessorCount, POOLTAG);
     RtlZeroMemory(g_GuestState, sizeof(VIRTUAL_MACHINE_STATE) * ProcessorCount);
 
-    // Allocate	and zero ept state
     g_EptState = ExAllocatePoolWithTag(NonPagedPool, sizeof(EPT_STATE), POOLTAG);
     RtlZeroMemory(g_EptState, sizeof(EPT_STATE));
 
-    // TODO: EPT Stuff
+    //
+    // EPT Shit 
+    //
 
-    //g_GuestState->Eptp = EPTp;
+    if (!EptCheckFeatures())
+    {
+        LogError("Your CPU does not support all the required EPT features.");
+        return FALSE;
+    }
+    else
+    {
+        if (!EptBuildMtrrMap()) 
+        {
+            LogError("Failed to build the EPT MTRR memory map.");
+            return FALSE;
+        }
+    }
 
-    // Allocate and run vmxon and vmptrld on 
+    if (!EptLogicalProcessorInitialize()) 
+    {
+        LogError("Failed to initalize EPT");
+        return FALSE;
+    }
+
+    LogInfo("EPT initialized successfully");
+
+    //
+    // Allocate vm regions and run vmxon (vmptrld is ran later)
+    //
     KeGenericCallDpc(HvDpcBroadcastAllocateVMRegions, 0x0);
 
 	return TRUE;
@@ -107,28 +130,28 @@ BOOLEAN LaunchVm(PVOID GuestStack)
 
     ProcessorID = KeGetCurrentProcessorNumber();
 
-    DbgPrint("\n======================== Launching VM  (Logical Core : 0x%x) =============================", ProcessorID);
+    //Log("\n======================== Launching VM  (Logical Core : 0x%x) =============================", ProcessorID);
 
-    DbgPrint("[hypoo] Setting up VMCS...");
+    //LogInfo("\t[hypoo] Setting up VMCS...");
 
     // Clear the VMCS State
     if (!ClearVmcsState(&g_GuestState[ProcessorID]))
     {
-        DbgPrint("Failed to clear VMCS State");
+        LogError("Failed to clear VMCS State");
         goto ErrorReturn;
     }
 
     // Load VMCS (Set the Current VMCS)
     if (!LoadVmcs(&g_GuestState[ProcessorID]))
     {
-        DbgPrint("Failed to call __vmx_vmptrld()");
+        LogError("Failed to call __vmx_vmptrld()");
         goto ErrorReturn;
     }
 
     // Setup the VMCS data
     SetupVmcs(&g_GuestState[ProcessorID], GuestStack);
 
-    DbgPrint("[hypoo] Executing VMLAUNCH");
+    LogInfo("\t[hypoo] Executing VMLAUNCH on logical core: 0x%x", ProcessorID);
 
     INT32 Status = __vmx_vmlaunch();
 
@@ -177,15 +200,8 @@ BOOLEAN VMXTerminate()
         // Free the destination memory
         MmFreeContiguousMemory(g_GuestState[CurrentCoreIndex].VmxonRegionVirtualAddress);
         MmFreeContiguousMemory(g_GuestState[CurrentCoreIndex].VmcsRegionVirtualAddress);
-
-        if(g_GuestState[CurrentCoreIndex].VmmStack)
-            ExFreePoolWithTag(g_GuestState[CurrentCoreIndex].VmmStack, POOLTAG);
-
-        if(g_GuestState[CurrentCoreIndex].MsrBitmapVirtualAddress)
-            ExFreePoolWithTag(g_GuestState[CurrentCoreIndex].MsrBitmapVirtualAddress, POOLTAG);
-
-        // TEST ASSERT
-        ASSERT(g_GuestState[CurrentCoreIndex].VmmStack != NULL);
+        ExFreePoolWithTag(g_GuestState[CurrentCoreIndex].VmmStack, POOLTAG);
+        ExFreePoolWithTag(g_GuestState[CurrentCoreIndex].MsrBitmapVirtualAddress, POOLTAG);
 
         // Still in root mode, risky af
         //LogInfo("\tFreed GuestState members on logical core %d", CurrentCoreIndex);
@@ -540,11 +556,13 @@ VOID HvInvalidateEptByVmcall(UINT64 Context)
 {
     if (Context == NULL)
     {
+        LogInfo("Invalidating all contexts");
         // We have to invalidate all contexts
         AsmVmxVmcall(VMCALL_INVEPT_ALL_CONTEXT, NULL, NULL, NULL);
     }
     else
     {
+        LogInfo("Invalidating single context");
         // We have to invalidate all contexts
         AsmVmxVmcall(VMCALL_INVEPT_SINGLE_CONTEXT, Context, NULL, NULL);
     }
@@ -553,6 +571,11 @@ VOID HvInvalidateEptByVmcall(UINT64 Context)
 VOID HvNotifyAllToInvalidateEpt()
 {
     // Let's notify them all
+
+    // SYSTEM SERVICE EXCEPTION 
+    // nt!KeIpiGenericCall+0xe3
+    // fffff801`2adb0cb3 450f22c4        mov     cr8,r12 <---- bsod here
+    
     KeIpiGenericCall(HvInvalidateEptByVmcall, g_EptState->EptPointer.AsUInt);
 }
 

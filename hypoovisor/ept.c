@@ -150,6 +150,35 @@ UINT64 InitializeEptPointer()
     return EPTPointer;
 }
 
+BOOLEAN EptCheckFeatures()
+{
+    IA32_VMX_EPT_VPID_CAP_REGISTER VpidRegister = { 0 };
+    IA32_MTRR_DEF_TYPE_REGISTER MTRRDefType = { 0 };
+
+    VpidRegister.AsUInt = __readmsr(IA32_VMX_EPT_VPID_CAP);
+    MTRRDefType.AsUInt = __readmsr(IA32_MTRR_DEF_TYPE);
+
+    if (!VpidRegister.PageWalkLength4 || !VpidRegister.MemoryTypeWriteBack || !VpidRegister.Pde2MbPages)
+    {
+        return FALSE;
+    }
+
+    if (!VpidRegister.AdvancedVmexitEptViolationsInformation)
+    {
+        LogWarning("The processor doesn't report advanced VM-exit information for EPT violations");
+    }
+
+    if (!MTRRDefType.MtrrEnable)
+    {
+        LogError("Mtrr Dynamic Ranges not supported");
+        return FALSE;
+    }
+
+    LogInfo(" *** All EPT features are present *** ");
+
+    return TRUE;
+}
+
 BOOLEAN EptLogicalProcessorInitialize()
 {
     PVMM_EPT_PAGE_TABLE PageTable;
@@ -185,6 +214,13 @@ BOOLEAN EptLogicalProcessorInitialize()
 
     // We will write the EPTP to the VMCS later 
     g_EptState->EptPointer = EPTP;
+
+    //
+    // TESTERINO
+    //
+    
+    //LogInfo("Testing ExAllocatePoolWithTag in VMX non root");
+    EptPageHook(ExAllocatePoolWithTag, FALSE);
 
     return TRUE;
 }
@@ -585,8 +621,15 @@ BOOLEAN EptPageHook(PVOID TargetFunc, BOOLEAN HasLaunched) {
         {
             LogInfo("Hook applied from VMX Root Mode");
 
-            // Now we have to notify all the core to invalidate their EPT
-            HvNotifyAllToInvalidateEpt();
+            if (!g_GuestState[LogicalCoreIndex].IsOnVmxRootMode)
+            {
+                // Now we have to notify all the core to invalidate their EPT
+                HvNotifyAllToInvalidateEpt();
+            }
+            else
+            {
+                LogError("Tried to apply ept hook from root mode but logical core was in non-root mode.");
+            }
 
             return TRUE;
         }

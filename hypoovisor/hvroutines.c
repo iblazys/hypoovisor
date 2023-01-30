@@ -34,17 +34,16 @@ BOOLEAN HvVmxInitialize()
 		}
 	}
 
-	InitiateCr3 = __readcr3();
-
 	// Let windows execute our routine for us, this eventually calls vmlaunch
 	KeGenericCallDpc(HvDpcBroadcastAsmVMXSaveState, 0x0);
 
 	//  Check if everything is ok then return true otherwise false
 	if (AsmVmxVmcall(VMCALL_TEST, 0x22, 0x333, 0x4444) == STATUS_SUCCESS)
 	{
-		///////////////// Test Hook after Vmx is launched /////////////////
-		//EptPageHook(ExAllocatePoolWithTag, TRUE);
-		///////////////////////////////////////////////////////////////////
+		// Test EPT after the VM is launched
+		// This is not root mode though...
+		EptPageHook(ExAllocatePoolWithTag, TRUE);
+
 		return TRUE;
 	}
 	else
@@ -76,15 +75,15 @@ BOOLEAN HvDpcBroadcastAllocateVMRegions(struct _KDPC* Dpc, PVOID DeferredContext
 {
 	INT CurrentProcessorNumber = KeGetCurrentProcessorNumber();
 
-	DbgPrint("=====================================================");
+	//DbgPrint("=====================================================");
 
-	DbgPrint("[hypoo] Current thread is executing in logical processor: %d", CurrentProcessorNumber);
+	//DbgPrint("[hypoo] Current thread is executing in logical processor: %d", CurrentProcessorNumber);
 
 	AsmEnableVmxOperation(); // lets move this into C eventually?
 
 	FixCr4AndCr0Bits();
 
-	DbgPrint("[hypoo] VMX Operation Enabled Successfully !");
+	//DbgPrint("[hypoo] VMX Operation Enabled Successfully !");
 
 	if (!AllocateVMRegion(REGION_VMXON, &g_GuestState[CurrentProcessorNumber]))
 		return FALSE;
@@ -92,10 +91,10 @@ BOOLEAN HvDpcBroadcastAllocateVMRegions(struct _KDPC* Dpc, PVOID DeferredContext
 	if (!AllocateVMRegion(REGION_VMCS, &g_GuestState[CurrentProcessorNumber]))
 		return FALSE;
 
-	DbgPrint("[*] VMCS Region is allocated at  ===============> %llx", g_GuestState[CurrentProcessorNumber].VmcsRegionVirtualAddress);
-	DbgPrint("[*] VMXON Region is allocated at ===============> %llx", g_GuestState[CurrentProcessorNumber].VmxonRegionVirtualAddress);
+	//DbgPrint("[*] VMCS Region is allocated at  ===============> %llx", g_GuestState[CurrentProcessorNumber].VmcsRegionVirtualAddress);
+	//DbgPrint("[*] VMXON Region is allocated at ===============> %llx", g_GuestState[CurrentProcessorNumber].VmxonRegionVirtualAddress);
 
-	DbgPrint("\n=====================================================\n");
+	//DbgPrint("\n=====================================================\n");
 
 	// Wait for all DPCs to synchronize at this point
 	KeSignalCallDpcSynchronize(SystemArgument2);
@@ -112,10 +111,7 @@ VOID HvTerminateVmx()
 	KeGenericCallDpc(HvDpcBroadcastTerminateVmx, 0x0);
 
 	/* De-allocatee global variables */
-
-	// TODO: Enable this, was causing crashes during testing cause ept wasnt set up.
 	
-	/*
 	// Free each split 
 	FOR_EACH_LIST_ENTRY(g_EptState->EptPageTable, DynamicSplitList, VMM_EPT_DYNAMIC_SPLIT, Split)
 		ExFreePoolWithTag(Split, POOLTAG);
@@ -123,9 +119,8 @@ VOID HvTerminateVmx()
 
 	// Free Identity Page Table
 	MmFreeContiguousMemory(g_EptState->EptPageTable);
-	*/
 
-	// Free GuestState
+	// Free GuestState - moved temporarily
 	//ExFreePoolWithTag(g_GuestState, POOLTAG);
 
 	// Free EptState

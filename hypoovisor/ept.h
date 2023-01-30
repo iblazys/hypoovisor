@@ -133,7 +133,10 @@ typedef struct _VMM_EPT_DYNAMIC_SPLIT
 
 } VMM_EPT_DYNAMIC_SPLIT, * PVMM_EPT_DYNAMIC_SPLIT;
 
+// OBSOLETE
 UINT64 InitializeEptPointer();
+
+BOOLEAN EptCheckFeatures();
 BOOLEAN EptLogicalProcessorInitialize();
 BOOLEAN EptBuildMtrrMap();
 PVMM_EPT_PAGE_TABLE EptAllocateAndCreateIdentityPageTable();
