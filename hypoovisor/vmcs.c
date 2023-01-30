@@ -2,6 +2,7 @@
 #include "vmcs.h"
 #include "ept.h"
 #include "vmstate.h"
+#include "utils.h"
 
 #pragma warning(disable : 6328)
 
@@ -55,6 +56,8 @@ BOOLEAN LoadVmcs(VIRTUAL_MACHINE_STATE* GuestState)
 }
 VOID SetupVmcsHostData(SEGMENT_DESCRIPTOR_REGISTER_64* Gdtr, SEGMENT_DESCRIPTOR_REGISTER_64* Idtr)
 {
+    PVOID HostRSP = 0;
+
     DbgPrint("[hypoo] Setting up VMCS host data");
 
     __vmx_vmwrite(VMCS_HOST_ES_SELECTOR, GetEs() & 0xF8);
@@ -65,8 +68,13 @@ VOID SetupVmcsHostData(SEGMENT_DESCRIPTOR_REGISTER_64* Gdtr, SEGMENT_DESCRIPTOR_
     __vmx_vmwrite(VMCS_HOST_GS_SELECTOR, GetGs() & 0xF8);
     __vmx_vmwrite(VMCS_HOST_TR_SELECTOR, GetTr() & 0xF8);
 
+    /*
+    Because we may be executing in an arbitrary user-mode, process as part
+    of the DPC interrupt we execute in We have to save Cr3, for HOST_CR3
+    */
+    __vmx_vmwrite(VMCS_HOST_CR3, FindSystemDirectoryTableBase());
+
     __vmx_vmwrite(VMCS_HOST_CR0, __readcr0());
-    __vmx_vmwrite(VMCS_HOST_CR3, InitiateCr3/*__readcr3()*/);
     __vmx_vmwrite(VMCS_HOST_CR4, __readcr4());
 
     __vmx_vmwrite(VMCS_HOST_SYSENTER_CS, __readmsr(IA32_SYSENTER_CS));
@@ -82,7 +90,10 @@ VOID SetupVmcsHostData(SEGMENT_DESCRIPTOR_REGISTER_64* Gdtr, SEGMENT_DESCRIPTOR_
     __vmx_vmwrite(VMCS_HOST_IDTR_BASE, Idtr->BaseAddress);
     
     // (((ULONG64)g_GuestState->VmmStack + VMM_STACK_SIZE) & ~0b1111ull) - 8)
-    __vmx_vmwrite(VMCS_HOST_RSP, ((ULONG64)g_GuestState->VmmStack + VMM_STACK_SIZE - 1));
+    HostRSP = (UINT64)g_GuestState->VmmStack + VMM_STACK_SIZE - 1;
+    HostRSP = ((PVOID)((ULONG_PTR)(HostRSP) & ~(16 - 1)));
+
+    __vmx_vmwrite(VMCS_HOST_RSP, HostRSP);
     __vmx_vmwrite(VMCS_HOST_RIP, (ULONG64)AsmVmexitHandler);
 
     // DEBUG

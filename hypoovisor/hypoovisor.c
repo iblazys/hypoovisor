@@ -69,6 +69,33 @@ BOOLEAN StopHV()
     return TRUE;
 }
 
+VOID FixCr4AndCr0Bits()
+{
+    CR_FIXED CrFixed = { 0 };
+    CR4      Cr4 = { 0 };
+    CR0      Cr0 = { 0 };
+
+    //
+    // Fix Cr0
+    //
+    CrFixed.Flags = __readmsr(IA32_VMX_CR0_FIXED0);
+    Cr0.AsUInt = __readcr0();
+    Cr0.AsUInt |= CrFixed.Fields.Low;
+    CrFixed.Flags = __readmsr(IA32_VMX_CR0_FIXED1);
+    Cr0.AsUInt &= CrFixed.Fields.Low;
+    __writecr0(Cr0.AsUInt);
+
+    //
+    // Fix Cr4
+    //
+    CrFixed.Flags = __readmsr(IA32_VMX_CR4_FIXED0);
+    Cr4.AsUInt = __readcr4();
+    Cr4.AsUInt |= CrFixed.Fields.Low;
+    CrFixed.Flags = __readmsr(IA32_VMX_CR4_FIXED1);
+    Cr4.AsUInt &= CrFixed.Fields.Low;
+    __writecr4(Cr4.AsUInt);
+}
+
 /// <summary>
 /// Assembly function AsmVMXSaveState calls this function.
 /// </summary>
@@ -105,14 +132,11 @@ BOOLEAN LaunchVm(PVOID GuestStack)
 
     INT32 Status = __vmx_vmlaunch();
 
-    // Should never reach this, unless there is an error in vmlaunch
-    __vmx_off();
-
     if (Status != 0)
     {
         unsigned __int32 VMXError;
         __vmx_vmread(VMCS_VM_INSTRUCTION_ERROR, &VMXError);
-        //__vmx_vmread(0xfffffffe, &VMXError); VMCS_LAUNCH_STATE_FIELD_ENCODING, for auditor
+        __vmx_off();
         DbgPrint("[hypoo] VMLAUNCH Failed! VMLAUNCH returned [%d], VMX Error: 0x%0x", Status, VMXError);
     }
 
@@ -219,12 +243,34 @@ VOID VMXVmxOff()
     // Restore the previous FS, GS , GDTR and IDTR register so patchguard doesnt fuck us down
     HvRestoreRegisters();
 
+    // Execute vmclear - required by intel manual see 24.11.1 vol 3C
+    // Doing this causes the system to hang though.... what gives?
+    //__vmx_vmclear(g_GuestState[CurrentProcessorIndex].VmcsRegionPhysicalAddress);
+
     // Execute Vmxoff
     __vmx_off();
 
-    // Part 8 test
-    //__writecr4(__readcr4() & (~CR4_VMX_ENABLE_FLAG));
+    // Disable VM extensions bit in CR4
+    DisableVMXe();
 }
+
+/* 
+* Cant read from the VM when VMXOFF is executed according to intel manual
+* But why does this happen? And only sometimes?
+* .
+[+] Information (VMXTerminate:140) |  Terminating VMX on logical core 1...0...2...4...3.......
+[+] Information (VMXTerminate:148) |  VMX termination was successful on logical core 1
+[!] Error (MainVmexitHandler:241) | VMEXIT occuring on logical processor with vmxoff already executed.
+Unknown exception - code 00000010 (!!! second chance !!!)
+hypoovisor!MainVmexitHandler+0xb9:
+fffff800`66112a59 0f78442434      vmread  qword ptr [rsp+34h],rax
+4: kd> g
+[+] Information (VMXTerminate:162) | 	Freed GuestState members on logical core 1
+Illegal instruction - code c000001d (!!! second chance !!!)
+hypoovisor!MainVmexitHandler+0xb9:
+fffff800`66112a59 0f78442434      vmread  qword ptr [rsp+34h],rax
+
+*/
 
 BOOLEAN MainVmexitHandler(PGUEST_REGS GuestRegs)
 {    
@@ -282,8 +328,6 @@ BOOLEAN MainVmexitHandler(PGUEST_REGS GuestRegs)
     case VMX_EXIT_REASON_EXECUTE_VMXON:
     case VMX_EXIT_REASON_EXECUTE_VMLAUNCH:
     {
-        DbgPrint("[hypoo][VMEXIT] Execution of vmlaunch detected... \n");
-
         ULONG RFLAGS = 0;
         __vmx_vmread(VMCS_GUEST_RFLAGS, &RFLAGS);
         __vmx_vmwrite(VMCS_GUEST_RFLAGS, RFLAGS | 0x1); // cf=1 indicate vm instructions fail
@@ -301,8 +345,6 @@ BOOLEAN MainVmexitHandler(PGUEST_REGS GuestRegs)
 
     case VMX_EXIT_REASON_EXECUTE_CPUID:
     {
-        //DbgPrint("[hypoo][VMEXIT] Execution of cpuid detected... \n");
-
         HvHandleCPUID(GuestRegs);
 
         break;
@@ -321,9 +363,6 @@ BOOLEAN MainVmexitHandler(PGUEST_REGS GuestRegs)
 
     case VMX_EXIT_REASON_MOV_CR:
     {
-        DbgPrint("[hypoo][VMEXIT] Execution of CR access... \n");
-        DbgBreakPoint();
-
         HvHandleControlRegisterAccess(GuestRegs);
         break;
     }

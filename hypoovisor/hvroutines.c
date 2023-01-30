@@ -82,6 +82,8 @@ BOOLEAN HvDpcBroadcastAllocateVMRegions(struct _KDPC* Dpc, PVOID DeferredContext
 
 	AsmEnableVmxOperation(); // lets move this into C eventually?
 
+	FixCr4AndCr0Bits();
+
 	DbgPrint("[hypoo] VMX Operation Enabled Successfully !");
 
 	if (!AllocateVMRegion(REGION_VMXON, &g_GuestState[CurrentProcessorNumber]))
@@ -125,7 +127,7 @@ VOID HvTerminateVmx()
 	*/
 
 	// Free GuestState
-	ExFreePoolWithTag(g_GuestState, POOLTAG);
+	//ExFreePoolWithTag(g_GuestState, POOLTAG);
 	DbgPrint("HvTerminateVmx: Free guest state");
 
 	// Free EptState
@@ -188,11 +190,28 @@ VOID HvHandleCPUID(PGUEST_REGS RegistersState)
 		// reserved for this indication.
 		cpu_info[2] |= HYPERV_HYPERVISOR_PRESENT_BIT;
 	}
+	else if (RegistersState->rax == HYPERV_CPUID_VENDOR_AND_MAX_FUNCTIONS)
+	{
 
+		// Return a maximum supported hypervisor CPUID leaf range and a vendor
+		// ID signature as required by the spec.
+
+		cpu_info[0] = HYPERV_CPUID_INTERFACE;
+		cpu_info[1] = 'rFvH';  // "[H]yper[v]isor [Fr]o[m] [Scratch] = HvFrmScratch"
+		cpu_info[2] = 'rcSm';
+		cpu_info[3] = 'hcta';
+	}
 	else if (RegistersState->rax == HYPERV_CPUID_INTERFACE)
 	{
 		// Return our interface identifier
-		cpu_info[0] = 'HVFS'; // TODO: Change me [H]yper[v]isor [F]rom [S]cratch 
+		//cpu_info[0] = 'HVFS'; // [H]yper[V]isor [F]rom [S]cratch 
+
+		// Return non Hv#1 value. This indicate that our hypervisor does NOT
+		// conform to the Microsoft hypervisor interface.
+
+		cpu_info[0] = '0#vH';  // Hv#0
+		cpu_info[1] = cpu_info[2] = cpu_info[3] = 0;
+
 	}
 
 	// Copy the values from the logical processor registers into the VP GPRs.

@@ -149,6 +149,7 @@ BOOLEAN StopHV();
 BOOLEAN VMXTerminate();
 VOID VMXVmxOff();
 
+VOID FixCr4AndCr0Bits();
 BOOLEAN LaunchVm(PVOID GuestStack);
 VOID ResumeToNextInstruction();
 VOID VmResumeInstruction();

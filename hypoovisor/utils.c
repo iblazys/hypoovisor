@@ -53,3 +53,10 @@ VOID GetBit(PVOID Addr, UINT64 Bit)
 
     return Addr2[Byte] & (1 << K);
 }
+
+UINT64 FindSystemDirectoryTableBase()
+{
+    // Return CR3 of the system process.
+    NT_KPROCESS* SystemProcess = (NT_KPROCESS*)(PsInitialSystemProcess);
+    return SystemProcess->DirectoryTableBase;
+}

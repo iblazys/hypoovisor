@@ -37,6 +37,20 @@ BOOLEAN IsVMXSupported()
     return TRUE;
 }
 
+VOID DisableVMXe() 
+{
+    CR4 Register = { 0 };
+
+    // Get CR4
+    Register.AsUInt = __readcr4();
+
+    // Enable the bit
+    Register.VmxEnable = 0;
+
+    // Write it back to cr4
+    __writecr4(Register.AsUInt);
+}
+
 SIZE_T GetHostMSR(ULONG MsrAddress)
 {
     return __readmsr(MsrAddress);

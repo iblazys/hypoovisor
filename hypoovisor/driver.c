@@ -3,6 +3,8 @@
 
 #include "hypoovisor.h"
 #include "hvroutines.h"
+#include "ept.h"
+#include "vmstate.h"
 
 VOID Unload(IN PDRIVER_OBJECT Driver)
 {
@@ -48,6 +50,9 @@ DrvClose(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
 	// executing VMXOFF (From CPUID) on every logical processor
 	StopHV();
+
+	// Free guest state
+	ExFreePoolWithTag(g_GuestState, POOLTAG);
 
 	Irp->IoStatus.Status = STATUS_SUCCESS;
 	Irp->IoStatus.Information = 0;

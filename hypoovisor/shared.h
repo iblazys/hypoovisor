@@ -35,6 +35,19 @@ typedef struct _GUEST_REGS
 	ULONG64 r15;
 } GUEST_REGS, * PGUEST_REGS;
 
+typedef union _CR_FIXED
+{
+	UINT64 Flags;
+
+	struct
+	{
+		unsigned long Low;
+		long          High;
+
+	} Fields;
+
+} CR_FIXED, * PCR_FIXED;
+
 
 //
 // Crude Logging

@@ -9,6 +9,9 @@ EXTERN LaunchVm:PROC ; LaunchVm(), VirtualizeCurrentSystem()
 
 AsmVMXSaveState PROC
 	
+	push 0	; add it because the alignment of the RSP when calling the target function
+			; should be aligned to 16 (otherwise cause performance issues)
+
 	pushfq	; save r/eflag
 
 	push rax
@@ -64,6 +67,8 @@ AsmVMXRestoreState PROC
 	pop rax
 	
 	popfq	; restore r/eflags
+
+	add rsp, 08h ; because we pushed an etra qword to make it aligned
 
 	ret
 	
