@@ -46,7 +46,7 @@ DrvCreate(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 NTSTATUS
 DrvClose(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
-	DbgPrint("[*] DrvClose Called !\n");
+	LogInfo("\tStopping hypoovisor and terminating VMX.");
 
 	// executing VMXOFF (From CPUID) on every logical processor
 	StopHV();

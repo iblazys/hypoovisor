@@ -111,7 +111,6 @@ VOID HvTerminateVmx()
 	// Broadcast to terminate Vmx
 	KeGenericCallDpc(HvDpcBroadcastTerminateVmx, 0x0);
 
-	DbgPrint("HvTerminateVmx: KeGenericCallDpc returned.");
 	/* De-allocatee global variables */
 
 	// TODO: Enable this, was causing crashes during testing cause ept wasnt set up.
@@ -128,7 +127,6 @@ VOID HvTerminateVmx()
 
 	// Free GuestState
 	//ExFreePoolWithTag(g_GuestState, POOLTAG);
-	DbgPrint("HvTerminateVmx: Free guest state");
 
 	// Free EptState
 	ExFreePoolWithTag(g_EptState, POOLTAG);

@@ -22,7 +22,7 @@ UINT64 g_VirtualGuestMemoryAddress; // remove me
 BOOLEAN InitializeHV()
 {
     INT ProcessorCount = 0;
-
+    
 	DbgPrint("[hypoo] Hypoovisor initializing...");
 
     // TODO: Check EPT Support, g_VirtualGuestMemoryAddress gets its address from here.
@@ -64,7 +64,7 @@ BOOLEAN StopHV()
 {
     HvTerminateVmx();
 
-    LogInfo("Hypoovisor stopped.");
+    LogInfo("Hypoovisor stopped and VMX terminated successfully.");
 
     return TRUE;
 }
@@ -163,6 +163,9 @@ BOOLEAN VMXTerminate()
 
     LogInfo("\tTerminating VMX on logical core %d", CurrentCoreIndex);
 
+    //ASSERT(g_GuestState != NULL && "Guest state already freed on current processor!");
+    //ASSERT(g_GuestState->VmxoffState.IsVmxoffExecuted == TRUE && "VMX already turned off on current processor!");
+
     // Execute Vmcall to to turn off vmx from Vmx root mode
     Status = AsmVmxVmcall(VMCALL_VMXOFF, NULL, NULL, NULL);
 
@@ -180,10 +183,12 @@ BOOLEAN VMXTerminate()
 
         if(g_GuestState[CurrentCoreIndex].MsrBitmapVirtualAddress)
             ExFreePoolWithTag(g_GuestState[CurrentCoreIndex].MsrBitmapVirtualAddress, POOLTAG);
-        
+
+        // TEST ASSERT
+        ASSERT(g_GuestState[CurrentCoreIndex].VmmStack != NULL);
 
         // Still in root mode, risky af
-        LogInfo("\tFreed GuestState members on logical core %d", CurrentCoreIndex);
+        //LogInfo("\tFreed GuestState members on logical core %d", CurrentCoreIndex);
 
         return TRUE;
     }
@@ -248,7 +253,7 @@ VOID VMXVmxOff()
     //__vmx_vmclear(g_GuestState[CurrentProcessorIndex].VmcsRegionPhysicalAddress);
 
     // Execute Vmxoff
-    __vmx_off();
+    __vmx_off(); // fails here so often -.-, been debugging this forever
 
     // Disable VM extensions bit in CR4
     DisableVMXe();

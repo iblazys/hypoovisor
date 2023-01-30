@@ -20,6 +20,23 @@ NTSTATUS VMXVmcallHandler(UINT64 VmcallNumber, UINT64 OptionalParam1, UINT64 Opt
 
     case VMCALL_VMXOFF:
     {
+        /*
+            [+] Information (DrvClose:49) |  Stopping hypoovisor and terminating VMX.
+            [+] Information (VMXTerminate:164) |  Terminating VMX on logical core 0
+            [+] Information (VMXTerminate:164) |  Terminating VMX on logical core 3
+            [+] Information (VMXTerminate:164) |  Terminating VMX on logical core 2
+            [+] Information (VMXTerminate:164) |  Terminating VMX on logical core 1
+            [+] Information (VMXTerminate:164) |  Terminating VMX on logical core 4
+            [+] Information (VMXTerminate:172) |  VMX termination was successful on logical core 0
+            [+] Information (VMXTerminate:172) | 	VMX termination was successful on logical core 1
+            [+] Information (VMXTerminate:172) | 	VMX termination was successful on logical core 4
+            Access violation - code c0000005 (!!! second chance !!!)
+            nt_exe!KiSaveProcessorControlState+0x171:
+            fffff805`14a09461 c3              ret
+
+            Also getting invalid vmcalls, instant shutdowns, etc
+        */
+
         VMXVmxOff();
 
         VmcallStatus = STATUS_SUCCESS;
@@ -59,6 +76,7 @@ NTSTATUS VMXVmcallHandler(UINT64 VmcallNumber, UINT64 OptionalParam1, UINT64 Opt
     
     default:
     {
+        DbgBreakPoint();
         LogWarning("Unsupported VMCALL, VMCallNumber: %d", VmcallNumber);
         VmcallStatus = STATUS_UNSUCCESSFUL;
         break;
